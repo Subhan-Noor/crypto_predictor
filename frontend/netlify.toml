@@ -1,0 +1,16 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Redirects API calls to your backend
+[[redirects]]
+  from = "/api/*"
+  to = "https://your-backend-api-url.com/api/:splat"
+  status = 200
+  force = true
+
+# Handle single-page application routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { getSentimentLabel, getSentimentColor } from '../utils/sentiment';
 
 interface PriceData {
     open: number;
@@ -111,16 +112,15 @@ export const RealTimePrice: React.FC<RealTimePriceProps> = ({ symbol }) => {
                 <div className="text-gray-600">Market Sentiment</div>
                 <div className="mt-2 h-2 bg-gray-200 rounded-full">
                     <div
-                        className={`h-full rounded-full ${
-                            sentiment > 0.6 ? 'bg-green-500' :
-                            sentiment > 0.4 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${sentiment * 100}%` }}
+                        className="h-full rounded-full"
+                        style={{ 
+                            width: `${sentiment * 100}%`,
+                            backgroundColor: getSentimentColor(sentiment)
+                        }}
                     />
                 </div>
                 <div className="text-sm text-gray-500 mt-1">
-                    {sentiment > 0.6 ? 'Bullish' :
-                     sentiment > 0.4 ? 'Neutral' : 'Bearish'}
+                    {getSentimentLabel(sentiment)}
                 </div>
             </div>
         </div>

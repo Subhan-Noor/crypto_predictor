@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Grid,
   Paper,
@@ -11,6 +11,8 @@ import {
   Card,
   CardContent,
   LinearProgress,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   LineChart,
@@ -20,41 +22,101 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts';
+import { getSentimentColor } from '../utils/sentiment';
+import { API_BASE_URL } from '../config';
 
-const mockSentimentData = [
-  { date: '2024-02-01', sentiment: 0.8, volume: 1200 },
-  { date: '2024-02-02', sentiment: 0.6, volume: 1500 },
-  { date: '2024-02-03', sentiment: 0.3, volume: 1800 },
-  { date: '2024-02-04', sentiment: 0.7, volume: 1300 },
-  { date: '2024-02-05', sentiment: 0.9, volume: 1600 },
-];
+// Define types for sentiment data
+interface SentimentDataItem {
+  date: string;
+  formatted_date: string;
+  sentiment: number;
+  volume: number;
+  positive_mentions: number;
+  negative_mentions: number;
+  neutral_mentions: number;
+}
 
-const mockIndicators = [
-  { name: 'RSI', value: 65, interpretation: 'Slightly Overbought' },
-  { name: 'MACD', value: 125, interpretation: 'Bullish Trend' },
-  { name: 'Moving Average (50)', value: 45200, interpretation: 'Above MA' },
-  { name: 'Volume', value: '1.2B', interpretation: 'Above Average' },
-];
-
-const mockNewsSentiment = [
-  { source: 'Twitter', sentiment: 0.75 },
-  { source: 'Reddit', sentiment: 0.65 },
-  { source: 'News Articles', sentiment: 0.55 },
-  { source: 'Fear & Greed Index', sentiment: 0.70 },
-];
+interface NewsSentiment {
+  source: string;
+  sentiment: number;
+}
 
 export default function Analysis() {
-  const [selectedCrypto, setSelectedCrypto] = React.useState('BTC');
-  const [timeframe, setTimeframe] = React.useState('7d');
+  const [selectedCrypto, setSelectedCrypto] = useState('BTC');
+  const [timeframe, setTimeframe] = useState('7d');
+  const [sentimentData, setSentimentData] = useState<SentimentDataItem[]>([]);
+  const [newsSentiment, setNewsSentiment] = useState<NewsSentiment[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const getSentimentColor = (sentiment: number) => {
-    if (sentiment >= 0.7) return '#4caf50';
-    if (sentiment >= 0.5) return '#ff9800';
-    return '#f44336';
+  // Get number of days from timeframe
+  const getDays = (tf: string): number => {
+    switch (tf) {
+      case '24h': return 1;
+      case '7d': return 7;
+      case '30d': return 30;
+      default: return 7;
+    }
   };
+
+  // Fetch sentiment data from API
+  const fetchSentimentData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const days = getDays(timeframe);
+      const response = await fetch(`${API_BASE_URL}/sentiment/${selectedCrypto}?days=${days}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch sentiment data');
+      }
+      const data = await response.json();
+      setSentimentData(data);
+
+      // Calculate news sentiment from the most recent data point
+      const latestData = data[data.length - 1];
+      const totalMentions = latestData.positive_mentions + latestData.negative_mentions + latestData.neutral_mentions;
+      
+      setNewsSentiment([
+        {
+          source: 'Social Media',
+          sentiment: latestData.positive_mentions / totalMentions
+        },
+        {
+          source: 'News Articles',
+          sentiment: (latestData.positive_mentions + latestData.neutral_mentions * 0.5) / totalMentions
+        },
+        {
+          source: 'Market Analysis',
+          sentiment: latestData.sentiment
+        },
+        {
+          source: 'Overall Trend',
+          sentiment: data.slice(-7).reduce((acc: number, curr: SentimentDataItem): number => acc + curr.sentiment, 0) / Math.min(7, data.length)
+        }
+      ]);
+
+      setLastUpdated(new Date().toLocaleString());
+    } catch (err) {
+      console.error('Error fetching sentiment data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSentimentData();
+  }, [selectedCrypto, timeframe]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -73,6 +135,8 @@ export default function Analysis() {
               <MenuItem value="BTC">Bitcoin (BTC)</MenuItem>
               <MenuItem value="ETH">Ethereum (ETH)</MenuItem>
               <MenuItem value="XRP">Ripple (XRP)</MenuItem>
+              <MenuItem value="SOL">Solana (SOL)</MenuItem>
+              <MenuItem value="DOT">Polkadot (DOT)</MenuItem>
             </Select>
           </FormControl>
           <FormControl sx={{ minWidth: 120 }}>
@@ -90,26 +154,54 @@ export default function Analysis() {
         </Box>
       </Box>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Sentiment Analysis Over Time
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">
+                Sentiment Analysis Over Time
+              </Typography>
+              {lastUpdated && (
+                <Typography variant="caption" color="textSecondary">
+                  Last updated: {lastUpdated}
+                </Typography>
+              )}
+            </Box>
             <Box sx={{ height: 400 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mockSentimentData}>
+                <LineChart data={sentimentData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
+                  <XAxis dataKey="formatted_date" />
+                  <YAxis 
+                    yAxisId="left" 
+                    domain={[0, 1]} 
+                    tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                  />
+                  <YAxis 
+                    yAxisId="right" 
+                    orientation="right" 
+                    tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+                  />
+                  <Tooltip 
+                    labelFormatter={(label) => `Date: ${label}`}
+                    formatter={(value: any, name: string) => [
+                      name === "Sentiment" ? `${(value * 100).toFixed(1)}%` : `${(value / 1000000).toFixed(1)}M`,
+                      name
+                    ]}
+                  />
                   <Line
                     yAxisId="left"
                     type="monotone"
                     dataKey="sentiment"
                     stroke="#8884d8"
                     strokeWidth={2}
+                    name="Sentiment"
                   />
                   <Line
                     yAxisId="right"
@@ -117,6 +209,7 @@ export default function Analysis() {
                     dataKey="volume"
                     stroke="#82ca9d"
                     strokeWidth={2}
+                    name="Volume"
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -129,11 +222,16 @@ export default function Analysis() {
             <Typography variant="h6" gutterBottom>
               Current Sentiment
             </Typography>
-            {mockNewsSentiment.map((item) => (
+            {newsSentiment.map((item) => (
               <Box key={item.source} sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  {item.source}
-                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="subtitle2">
+                    {item.source}
+                  </Typography>
+                  <Typography variant="subtitle2" color="textSecondary">
+                    {(item.sentiment * 100).toFixed(1)}%
+                  </Typography>
+                </Box>
                 <LinearProgress
                   variant="determinate"
                   value={item.sentiment * 100}
@@ -143,40 +241,46 @@ export default function Analysis() {
                     backgroundColor: '#e0e0e0',
                     '& .MuiLinearProgress-bar': {
                       backgroundColor: getSentimentColor(item.sentiment),
+                      borderRadius: 5,
                     },
                   }}
                 />
-                <Typography variant="body2" color="textSecondary">
-                  {(item.sentiment * 100).toFixed(1)}%
-                </Typography>
               </Box>
             ))}
+            <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Overall Sentiment
+              </Typography>
+              {(() => {
+                const avgSentiment = newsSentiment.reduce((acc, curr) => acc + curr.sentiment, 0) / newsSentiment.length;
+                return (
+                  <>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2" fontWeight="medium">
+                        {avgSentiment >= 0.6 ? 'Bullish' : avgSentiment >= 0.4 ? 'Neutral' : 'Bearish'}
+                      </Typography>
+                      <Typography variant="body2" color="textSecondary">
+                        {(avgSentiment * 100).toFixed(1)}%
+                      </Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={avgSentiment * 100}
+                      sx={{
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: '#e0e0e0',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: getSentimentColor(avgSentiment),
+                          borderRadius: 5,
+                        },
+                      }}
+                    />
+                  </>
+                );
+              })()}
+            </Box>
           </Paper>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Typography variant="h6" gutterBottom>
-            Technical Indicators
-          </Typography>
-          <Grid container spacing={2}>
-            {mockIndicators.map((indicator) => (
-              <Grid item xs={12} sm={6} md={3} key={indicator.name}>
-                <Card>
-                  <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
-                      {indicator.name}
-                    </Typography>
-                    <Typography variant="h5" component="div">
-                      {indicator.value}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      {indicator.interpretation}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
         </Grid>
       </Grid>
     </Box>
