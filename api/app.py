@@ -1,0 +1,307 @@
+"""
+FastAPI/Flask backend for model serving
+Endpoints for predictions, data retrieval, and model info
+"""
+from fastapi import FastAPI, HTTPException, Query, WebSocket, BackgroundTasks, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Dict
+import sys
+from pathlib import Path
+import pandas as pd
+from datetime import datetime, timedelta
+import asyncio
+import json
+from collections import defaultdict
+import random
+
+# Add project root to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
+
+from data_fetchers.crypto_data_fetcher import CryptoDataFetcher
+from data_fetchers.sentiment_fetcher import SentimentFetcher
+from models.price_predictor import PricePredictor
+from models.sentiment_model import SentimentModel
+
+app = FastAPI(
+    title="Crypto Predictor API",
+    description="API for cryptocurrency price predictions and analysis",
+    version="1.0.0"
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Store active WebSocket connections and tasks
+active_connections: Dict[str, List[WebSocket]] = defaultdict(list)
+update_tasks: Dict[str, asyncio.Task] = {}
+
+# Mock price data
+MOCK_PRICES = {
+    'BTC': 45000,
+    'ETH': 2800,
+    'XRP': 0.58,
+    'ADA': 1.20,
+    'SOL': 98,
+    'DOT': 15
+}
+
+async def send_initial_update(websocket: WebSocket, symbol: str):
+    """Send initial update immediately after connection"""
+    base_price = MOCK_PRICES.get(symbol, 1000)
+    current_price = base_price * (1 + random.uniform(-0.02, 0.02))
+    
+    update = {
+        "type": "update",
+        "symbol": symbol,
+        "timestamp": datetime.now().isoformat(),
+        "price_data": {
+            "open": base_price,
+            "high": current_price * 1.02,
+            "low": current_price * 0.98,
+            "close": current_price,
+            "volume": random.uniform(1000000, 5000000)
+        },
+        "prediction": {
+            "price": current_price * (1 + random.uniform(-0.05, 0.15)),
+            "confidence_interval": [
+                current_price * 0.95,
+                current_price * 1.15
+            ]
+        },
+        "sentiment": random.uniform(0.3, 0.8)
+    }
+    
+    try:
+        await websocket.send_json(update)
+    except Exception as e:
+        print(f"Error sending initial update: {e}")
+
+# Background task for fetching real-time updates
+async def fetch_and_broadcast_updates(symbol: str):
+    """Background task to fetch and broadcast updates for a symbol"""
+    base_price = MOCK_PRICES.get(symbol, 1000)
+    
+    while True:
+        try:
+            if not active_connections[symbol]:
+                print(f"No active connections for {symbol}, stopping updates")
+                break
+                
+            # Generate mock price data with some random variation
+            current_price = base_price * (1 + random.uniform(-0.02, 0.02))
+            high_price = current_price * (1 + random.uniform(0.01, 0.03))
+            low_price = current_price * (1 - random.uniform(0.01, 0.03))
+            
+            # Prepare mock update
+            update = {
+                "type": "update",
+                "symbol": symbol,
+                "timestamp": datetime.now().isoformat(),
+                "price_data": {
+                    "open": base_price,
+                    "high": high_price,
+                    "low": low_price,
+                    "close": current_price,
+                    "volume": random.uniform(1000000, 5000000)
+                },
+                "prediction": {
+                    "price": current_price * (1 + random.uniform(-0.05, 0.15)),
+                    "confidence_interval": [
+                        current_price * 0.95,
+                        current_price * 1.15
+                    ]
+                },
+                "sentiment": random.uniform(0.3, 0.8)
+            }
+            
+            # Broadcast to all connected clients for this symbol
+            dead_connections = []
+            for connection in active_connections[symbol]:
+                try:
+                    await connection.send_json(update)
+                except Exception as e:
+                    print(f"Error sending to client: {e}")
+                    dead_connections.append(connection)
+            
+            # Remove dead connections
+            for dead_conn in dead_connections:
+                if dead_conn in active_connections[symbol]:
+                    active_connections[symbol].remove(dead_conn)
+            
+        except Exception as e:
+            print(f"Error in update loop for {symbol}: {e}")
+        
+        # Wait before next update (5 seconds)
+        await asyncio.sleep(5)
+    
+    # Clean up when the loop ends
+    if symbol in update_tasks:
+        del update_tasks[symbol]
+
+@app.websocket("/ws/{symbol}")
+async def websocket_endpoint(websocket: WebSocket, symbol: str):
+    """WebSocket endpoint for real-time updates"""
+    await websocket.accept()
+    print(f"WebSocket connection opened for {symbol}")
+    
+    # Add connection to active connections
+    symbol = symbol.upper()
+    active_connections[symbol].append(websocket)
+    
+    # Send initial update immediately
+    await send_initial_update(websocket, symbol)
+    
+    # Start background task if not already running
+    if symbol not in update_tasks or update_tasks[symbol].done():
+        update_tasks[symbol] = asyncio.create_task(fetch_and_broadcast_updates(symbol))
+    
+    try:
+        while True:
+            # Handle incoming messages
+            message = await websocket.receive_json()
+            message_type = message.get('type')
+            
+            if message_type == 'subscribe':
+                # Send immediate update
+                await websocket.send_json({
+                    "type": "subscribed",
+                    "symbol": symbol,
+                    "message": f"Successfully subscribed to {symbol} updates"
+                })
+            elif message_type == 'heartbeat':
+                # Respond to heartbeat
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "timestamp": datetime.now().isoformat()
+                })
+            
+    except WebSocketDisconnect:
+        print(f"WebSocket disconnected for {symbol}")
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        print(f"WebSocket connection closed for {symbol}")
+        if websocket in active_connections[symbol]:
+            active_connections[symbol].remove(websocket)
+            
+        # If this was the last connection, cancel the update task
+        if not active_connections[symbol] and symbol in update_tasks:
+            update_tasks[symbol].cancel()
+            del update_tasks[symbol]
+
+# Pydantic models for request/response validation
+class PredictionRequest(BaseModel):
+    symbol: str
+    timeframe: str = "24h"  # Options: 24h, 7d, 30d
+    include_sentiment: bool = True
+
+class PredictionResponse(BaseModel):
+    symbol: str
+    current_price: float
+    predicted_price: float
+    confidence_interval: tuple[float, float]
+    prediction_time: str
+    sentiment_score: Optional[float] = None
+
+class HistoricalDataRequest(BaseModel):
+    symbol: str
+    days: int = 30
+    include_indicators: bool = False
+
+@app.get("/")
+async def root():
+    """API health check endpoint"""
+    return {"status": "healthy", "version": "1.0.0"}
+
+@app.post("/predict", response_model=PredictionResponse)
+async def get_prediction(request: PredictionRequest):
+    """Get price prediction for a specific cryptocurrency"""
+    try:
+        # Initialize predictors
+        price_predictor = PricePredictor()
+        sentiment_model = SentimentModel() if request.include_sentiment else None
+        
+        # Get prediction
+        prediction = price_predictor.predict(
+            symbol=request.symbol,
+            timeframe=request.timeframe
+        )
+        
+        # Get sentiment if requested
+        sentiment_score = None
+        if request.include_sentiment:
+            sentiment_score = sentiment_model.get_current_sentiment(request.symbol)
+        
+        return PredictionResponse(
+            symbol=request.symbol,
+            current_price=prediction['current_price'],
+            predicted_price=prediction['predicted_price'],
+            confidence_interval=prediction['confidence_interval'],
+            prediction_time=datetime.now().isoformat(),
+            sentiment_score=sentiment_score
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/historical/{symbol}")
+async def get_historical_data(
+    symbol: str,
+    days: int = Query(default=30, le=365),
+    include_indicators: bool = False
+):
+    """Get historical price data for a cryptocurrency"""
+    try:
+        fetcher = CryptoDataFetcher()
+        data = fetcher.get_historical_data(symbol, days)
+        
+        if include_indicators:
+            # Add technical indicators
+            data = fetcher.add_technical_indicators(data)
+        
+        return {
+            "symbol": symbol,
+            "data": data.to_dict(orient='records')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sentiment/{symbol}")
+async def get_sentiment_data(
+    symbol: str,
+    days: int = Query(default=7, le=30)
+):
+    """Get sentiment analysis data for a cryptocurrency"""
+    try:
+        sentiment_fetcher = SentimentFetcher()
+        sentiment_data = sentiment_fetcher.get_historical_sentiment(symbol, days)
+        
+        return {
+            "symbol": symbol,
+            "sentiment_data": sentiment_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/models/info")
+async def get_model_info():
+    """Get information about available prediction models and their performance"""
+    try:
+        predictor = PricePredictor()
+        return {
+            "available_models": predictor.list_models(),
+            "performance_metrics": predictor.get_performance_metrics(),
+            "last_updated": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

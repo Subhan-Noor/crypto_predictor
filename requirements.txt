@@ -1,0 +1,67 @@
+# Build dependencies
+cython>=0.29.33
+
+# Core dependencies
+numpy>=1.21.0
+pandas>=1.3.0
+requests>=2.26.0
+python-dateutil>=2.8.2
+
+# Machine Learning
+scikit-learn>=0.24.2
+xgboost>=1.4.2
+tensorflow>=2.6.0
+statsmodels>=0.13.0
+
+# Time Series
+prophet>=1.1.1
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+plotly>=5.3.0
+
+# Progress and utilities
+tqdm>=4.62.3
+python-dotenv>=0.19.0
+
+# Testing
+pytest>=7.0.0
+
+# Data processing and analysis
+textblob>=0.17.1  # For sentiment analysis
+praw>=7.7.1  # For Reddit API access
+
+# Required by various dependencies
+packaging>=20.9
+filelock>=3.12.2
+fsspec[http]>=2.0.2
+pyyaml>=5.1
+aiohttp>=3.8.5
+pillow>=9.5.0
+jinja2>=3.0.0
+pydantic>=2.5.3
+typer>=0.3.0,<1.0.0
+cffi>=1.14
+sniffio>=1.3.0
+sortedcontainers>=2.4.0
+smart-open>=5.2.1,<8.0.0
+
+# Optional dependencies
+pystan>=2.19.1.1  # required by prophet
+
+# Added from the code block
+fastapi==0.109.0
+uvicorn==0.27.0
+
+# Added from the code block
+pandas==2.2.0
+numpy==1.26.3
+requests==2.31.0
+python-dotenv==1.0.0
+websockets==12.0
+pydantic>=2.5.3
+scikit-learn==1.4.0  # for ML models
+python-binance==1.0.19  # for crypto data
+ccxt==4.2.2  # alternative crypto data source
+ta==0.10.2  # technical analysis indicators 
