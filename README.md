@@ -169,3 +169,31 @@ crypto-predictor/
 
 feature_columns = ['open', 'high', 'low', 'volume', 'ma7', 'ma21', 'rsi']
 target_column = 'close'
+
+## Code Structure and Organization
+
+The project has been organized with a focus on maintainability and code reuse:
+
+### Core Components
+
+- **api/**: FastAPI backend for model serving
+- **data_fetchers/**: Modules for fetching cryptocurrency and sentiment data
+- **models/**: ML models for price prediction and sentiment analysis
+- **frontend/**: React frontend with visualization components
+- **utils/**: Shared utility functions
+- **processors/**: Data processing pipeline
+- **evaluation/**: Model evaluation tools
+
+### Utility Libraries
+
+The `utils/` directory contains shared functionality used across the project:
+
+- **data_processing.py**: Functions for data transformation and feature engineering
+- **time_helpers.py**: Date and time utilities for working with time-series data
+
+### Best Practices
+
+- Code has been organized to minimize duplication
+- Common utilities are extracted to dedicated modules
+- Consistent error handling patterns are used throughout the API
+- Clear separation of concerns between data fetching, processing, and model serving

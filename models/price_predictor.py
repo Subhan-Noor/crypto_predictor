@@ -14,6 +14,12 @@ from typing import List, Tuple, Optional, Dict
 from abc import ABC, abstractmethod
 import logging
 import random  # Temporary for demo
+from pathlib import Path
+import sys
+
+# Add project root to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.data_processing import create_technical_indicators
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +38,29 @@ class BaseMLModel(ABC):
         """
         self.feature_columns = feature_columns
         self.target_column = target_column
+        self.scaler = StandardScaler()
+    
+    def prepare_features(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Prepare features for training or prediction.
+        
+        Args:
+            df: DataFrame containing features and target
+            
+        Returns:
+            Tuple of (X, y) where X is the feature matrix and y is the target vector
+            For prediction, y may be None if target column is not in the DataFrame
+        """
+        # Select feature columns
+        X = df[self.feature_columns].values
+        
+        # Scale features
+        X = self.scaler.fit_transform(X)
+        
+        # Get target if available (for training) or None (for prediction)
+        y = df[self.target_column].values if self.target_column in df.columns else None
+        
+        return X, y
     
     @abstractmethod
     def train(self, df: pd.DataFrame) -> None:
@@ -144,34 +173,8 @@ class XGBoostModel(BaseMLModel):
 
 def create_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """Create technical indicators as features."""
-    df = df.copy()
-    
-    # Moving averages
-    df['ma7'] = df['close'].rolling(window=7).mean()
-    df['ma21'] = df['close'].rolling(window=21).mean()
-    
-    # Price momentum
-    df['returns'] = df['close'].pct_change()
-    df['returns_7d'] = df['close'].pct_change(periods=7)
-    
-    # Volatility
-    df['volatility'] = df['returns'].rolling(window=21).std()
-    
-    # Trading volume features
-    df['volume_ma7'] = df['volume'].rolling(window=7).mean()
-    df['volume_ma21'] = df['volume'].rolling(window=21).mean()
-    
-    # RSI
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['rsi'] = 100 - (100 / (1 + rs))
-    
-    # Clean up NaN values
-    df = df.dropna()
-    
-    return df
+    # Use utility function from utils.data_processing
+    return create_technical_indicators(df)
 
 class PricePredictor:
     """Main price prediction class that combines multiple models."""

@@ -54,12 +54,12 @@ MOCK_PRICES = {
     'DOT': 15
 }
 
-async def send_initial_update(websocket: WebSocket, symbol: str):
-    """Send initial update immediately after connection"""
+def generate_market_update(symbol: str) -> Dict:
+    """Generate a mock market update for a given symbol"""
     base_price = MOCK_PRICES.get(symbol, 1000)
     current_price = base_price * (1 + random.uniform(-0.02, 0.02))
     
-    update = {
+    return {
         "type": "update",
         "symbol": symbol,
         "timestamp": datetime.now().isoformat(),
@@ -79,8 +79,11 @@ async def send_initial_update(websocket: WebSocket, symbol: str):
         },
         "sentiment": random.uniform(0.3, 0.8)
     }
-    
+
+async def send_initial_update(websocket: WebSocket, symbol: str):
+    """Send initial update immediately after connection"""
     try:
+        update = generate_market_update(symbol)
         await websocket.send_json(update)
     except Exception as e:
         print(f"Error sending initial update: {e}")
@@ -88,40 +91,14 @@ async def send_initial_update(websocket: WebSocket, symbol: str):
 # Background task for fetching real-time updates
 async def fetch_and_broadcast_updates(symbol: str):
     """Background task to fetch and broadcast updates for a symbol"""
-    base_price = MOCK_PRICES.get(symbol, 1000)
-    
     while True:
         try:
             if not active_connections[symbol]:
                 print(f"No active connections for {symbol}, stopping updates")
                 break
                 
-            # Generate mock price data with some random variation
-            current_price = base_price * (1 + random.uniform(-0.02, 0.02))
-            high_price = current_price * (1 + random.uniform(0.01, 0.03))
-            low_price = current_price * (1 - random.uniform(0.01, 0.03))
-            
-            # Prepare mock update
-            update = {
-                "type": "update",
-                "symbol": symbol,
-                "timestamp": datetime.now().isoformat(),
-                "price_data": {
-                    "open": base_price,
-                    "high": high_price,
-                    "low": low_price,
-                    "close": current_price,
-                    "volume": random.uniform(1000000, 5000000)
-                },
-                "prediction": {
-                    "price": current_price * (1 + random.uniform(-0.05, 0.15)),
-                    "confidence_interval": [
-                        current_price * 0.95,
-                        current_price * 1.15
-                    ]
-                },
-                "sentiment": random.uniform(0.3, 0.8)
-            }
+            # Generate mock update
+            update = generate_market_update(symbol)
             
             # Broadcast to all connected clients for this symbol
             dead_connections = []
@@ -249,19 +226,20 @@ async def get_prediction(request: PredictionRequest):
             include_sentiment=request.include_sentiment
         )
         
-        # Get sentiment score from the prediction result
-        sentiment_score = prediction.get('sentiment_score')
-        
-        return PredictionResponse(
+        # Format response
+        response = PredictionResponse(
             symbol=request.symbol,
             current_price=current_price,
             predicted_price=prediction['predicted_price'],
             confidence_interval=prediction['confidence_interval'],
             prediction_time=datetime.now().isoformat(),
-            sentiment_score=sentiment_score
+            sentiment_score=prediction.get('sentiment_score')
         )
+        
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error getting prediction: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 @app.get("/historical/{symbol}")
 async def get_historical_data(
