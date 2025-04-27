@@ -118,8 +118,8 @@ export default function Predictions() {
       // Combine historical and prediction data
       const combinedData: PredictionDataItem[] = [];
 
-      // Add historical data points (except the most recent, which we'll replace with current price)
-      historicalData.slice(-4, -1).forEach((point: any) => {
+      // Add historical data points
+      historicalData.forEach((point: any) => {
         combinedData.push({
           date: point.formatted_date,
           actual: point.close,
@@ -129,23 +129,16 @@ export default function Predictions() {
         });
       });
 
-      // Add current point with price from prediction API (using the current price from dashboard)
-      const currentDate = new Date().toLocaleDateString();
-      combinedData.push({
-        date: currentDate,
-        actual: predictionResponse.current_price,
-        predicted: predictionResponse.current_price,
-        lower: predictionResponse.current_price,
-        upper: predictionResponse.current_price,
-      });
+      // Get the most recent price from historical data
+      const mostRecentPrice = historicalData[historicalData.length - 1].close;
 
       // Add future predictions
       const futureDates = getNextDates(timeframe === '24h' ? 1 : timeframe === '7d' ? 7 : 30);
       
       // For the first future date, we want to clearly show the prediction starting from the current price
       if (futureDates.length > 0) {
-        // Calculate the percentage change
-        const percentChange = ((predictionResponse.predicted_price - predictionResponse.current_price) / predictionResponse.current_price) * 100;
+        // Calculate the percentage change using the most recent price
+        const percentChange = ((predictionResponse.predicted_price - mostRecentPrice) / mostRecentPrice * 100);
         
         combinedData.push({
           date: futureDates[0],
@@ -294,11 +287,11 @@ export default function Predictions() {
               )}
             </Box>
             {predictionData.length > 0 && (() => {
-              // Pre-extract data to avoid TypeScript errors
-              const currentPoint = predictionData.find(d => d.actual);
+              // Get the most recent actual price point
+              const currentPrice = predictionData.filter(d => d.actual !== undefined)
+                                              .slice(-1)[0]?.actual || 0;
               const futurePoint = predictionData.find(d => d.date === getNextDates(1)[0]);
               
-              const currentPrice = currentPoint?.actual || 0;
               const predictedPrice = futurePoint?.predicted || 0;
               const lowerBound = futurePoint?.lower || 0;
               const upperBound = futurePoint?.upper || 0;
