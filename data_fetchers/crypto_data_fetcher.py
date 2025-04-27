@@ -92,8 +92,8 @@ class CryptoDataFetcher:
         try:
             print(f"Fetching {symbol} historical data for the last {days} days...")
             
-            # Try CryptoCompare API first
-            df = self._fetch_from_cryptocompare(symbol, days)
+            # Try CryptoCompare API first - call with days parameter now
+            df = self._fetch_from_cryptocompare(symbol, days=days)
             if df is not None and not df.empty:
                 print(f"Successfully fetched {symbol} data from CryptoCompare.")
                 return df
@@ -119,19 +119,31 @@ class CryptoDataFetcher:
             print("Generating sample data instead.")
             return self._generate_sample_data(symbol, days)
     
-    def _fetch_from_cryptocompare(self, symbol: str, days: int) -> Optional[pd.DataFrame]:
+    def _fetch_from_cryptocompare(self, symbol: str, days=None, start_date=None, end_date=None) -> Optional[pd.DataFrame]:
         """
         Fetch data from CryptoCompare API for any cryptocurrency.
         
         Args:
             symbol (str): Cryptocurrency symbol
-            days (int): Number of days of historical data
+            days (int, optional): Number of days of historical data
+            start_date (datetime, optional): Start date for data
+            end_date (datetime, optional): End date for data
             
         Returns:
             Optional[pd.DataFrame]: DataFrame with historical data or None if failed
         """
         try:
-            print(f"Trying CryptoCompare API for {symbol} ({days} days)...")
+            # Handle different parameter combinations
+            if days is not None:
+                print(f"Trying CryptoCompare API for {symbol} ({days} days)...")
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=days)
+            elif start_date is not None and end_date is not None:
+                print(f"Trying CryptoCompare API for {symbol} from {start_date.date()} to {end_date.date()}...")
+                days = (end_date - start_date).days + 1
+            else:
+                print("Error: Either 'days' or both 'start_date' and 'end_date' must be provided")
+                return None
             
             # CryptoCompare has a limit of 2000 days per request
             max_days_per_request = 2000
@@ -139,7 +151,7 @@ class CryptoDataFetcher:
             
             # Calculate number of requests needed
             remaining_days = days
-            current_timestamp = int(datetime.now().timestamp())
+            current_timestamp = int(end_date.timestamp())
             
             while remaining_days > 0:
                 # Determine days for this request
@@ -486,56 +498,127 @@ class CryptoDataFetcher:
         return weekly_df
 
     def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Standardize column names and ensure required columns exist."""
-        df = df.copy()
-        
-        # Rename columns based on mapping
-        df.rename(columns={k: v for k, v in self.column_mapping.items() if k in df.columns}, 
-                 inplace=True)
-        
+        """Standardize column names across different data sources"""
+        # Map non-standard column names to standard ones
+        for src_col, dst_col in self.column_mapping.items():
+            if src_col in df.columns and dst_col not in df.columns:
+                df[dst_col] = df[src_col]
+                
         # Ensure all required columns exist
-        required_columns = ['open', 'high', 'low', 'close', 'volume']
-        
-        # If we only have close prices, estimate others
-        if 'close' in df.columns and not all(col in df.columns for col in ['open', 'high', 'low']):
-            df['open'] = df['close'].shift(1)
-            df['high'] = df['close']
-            df['low'] = df['close']
-            
-        # If volume is missing, add a placeholder
-        if 'volume' not in df.columns:
-            df['volume'] = 0
-            logger.warning("Volume data not available, using placeholder values")
-        
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        for col in required_cols:
+            if col not in df.columns:
+                print(f"Warning: Required column '{col}' missing from data. Using NaN values.")
+                df[col] = np.nan
+                
         return df
     
-    def _fetch_from_cryptocompare(self, symbol: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
-        """Fetch data from CryptoCompare."""
-        try:
-            # Calculate number of days
-            days = (end_date - start_date).days + 1
-            
-            params = {
-                'fsym': symbol,
-                'tsym': 'USD',
-                'limit': days,
-                'toTs': int(end_date.timestamp())
-            }
-            
-            response = requests.get(self.base_urls['cryptocompare'], params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            if data['Response'] == 'Success':
-                df = pd.DataFrame(data['Data']['Data'])
-                df['time'] = pd.to_datetime(df['time'], unit='s')
-                df.set_index('time', inplace=True)
-                return self._standardize_columns(df)
-            
-        except Exception as e:
-            logger.error(f"Error fetching from CryptoCompare: {str(e)}")
+    def add_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add technical indicators to a price DataFrame
         
-        return None
+        Args:
+            df (pd.DataFrame): Price DataFrame with OHLCV data
+            
+        Returns:
+            pd.DataFrame: DataFrame with added technical indicators
+        """
+        if df is None or df.empty:
+            return df
+            
+        # Make a copy to avoid modifying the original
+        df = df.copy()
+        
+        # Ensure we have the required columns
+        required = ['open', 'high', 'low', 'close', 'volume']
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            print(f"Warning: Missing required columns {missing}. Some indicators may be inaccurate.")
+            # Add missing columns with NaN values
+            for col in missing:
+                df[col] = np.nan
+        
+        # Moving Averages
+        try:
+            # 7-day SMA
+            df['sma_7'] = df['close'].rolling(window=7).mean()
+            # 20-day SMA
+            df['sma_20'] = df['close'].rolling(window=20).mean()
+            # 50-day SMA
+            df['sma_50'] = df['close'].rolling(window=50).mean()
+            
+            # 7-day EMA
+            df['ema_7'] = df['close'].ewm(span=7, adjust=False).mean()
+            # 20-day EMA
+            df['ema_20'] = df['close'].ewm(span=20, adjust=False).mean()
+            # 50-day EMA
+            df['ema_50'] = df['close'].ewm(span=50, adjust=False).mean()
+        except Exception as e:
+            print(f"Error calculating moving averages: {e}")
+        
+        # Bollinger Bands (20-day, 2 standard deviations)
+        try:
+            df['bb_middle'] = df['close'].rolling(window=20).mean()
+            df['bb_std'] = df['close'].rolling(window=20).std()
+            df['bb_upper'] = df['bb_middle'] + 2 * df['bb_std']
+            df['bb_lower'] = df['bb_middle'] - 2 * df['bb_std']
+        except Exception as e:
+            print(f"Error calculating Bollinger Bands: {e}")
+        
+        # RSI (14-day)
+        try:
+            delta = df['close'].diff()
+            gain = delta.where(delta > 0, 0)
+            loss = -delta.where(delta < 0, 0)
+            
+            avg_gain = gain.rolling(window=14).mean()
+            avg_loss = loss.rolling(window=14).mean()
+            
+            rs = avg_gain / avg_loss
+            df['rsi_14'] = 100 - (100 / (1 + rs))
+        except Exception as e:
+            print(f"Error calculating RSI: {e}")
+        
+        # MACD (12-day EMA, 26-day EMA, 9-day signal)
+        try:
+            df['macd_line'] = df['close'].ewm(span=12, adjust=False).mean() - df['close'].ewm(span=26, adjust=False).mean()
+            df['macd_signal'] = df['macd_line'].ewm(span=9, adjust=False).mean()
+            df['macd_histogram'] = df['macd_line'] - df['macd_signal']
+        except Exception as e:
+            print(f"Error calculating MACD: {e}")
+        
+        # Volume indicators
+        if 'volume' in df.columns and not df['volume'].isnull().all():
+            try:
+                # On-Balance Volume (OBV)
+                df['obv'] = np.where(df['close'] > df['close'].shift(1), df['volume'], 
+                            np.where(df['close'] < df['close'].shift(1), -df['volume'], 0)).cumsum()
+                
+                # Volume SMA
+                df['volume_sma_7'] = df['volume'].rolling(window=7).mean()
+                df['volume_sma_20'] = df['volume'].rolling(window=20).mean()
+            except Exception as e:
+                print(f"Error calculating volume indicators: {e}")
+        
+        # Volatility indicator - Average True Range (ATR)
+        try:
+            high_low = df['high'] - df['low']
+            high_close = (df['high'] - df['close'].shift()).abs()
+            low_close = (df['low'] - df['close'].shift()).abs()
+            
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            df['atr_14'] = tr.rolling(window=14).mean()
+        except Exception as e:
+            print(f"Error calculating ATR: {e}")
+        
+        # Price Rate of Change
+        try:
+            df['roc_7'] = ((df['close'] / df['close'].shift(7)) - 1) * 100
+            df['roc_14'] = ((df['close'] / df['close'].shift(14)) - 1) * 100
+        except Exception as e:
+            print(f"Error calculating Rate of Change: {e}")
+        
+        return df
     
     def _fetch_from_alternative(self, symbol: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
         """Fetch data from Alternative.me."""
@@ -577,7 +660,7 @@ def fetch_crypto_data(symbol: str, start_date: datetime, end_date: datetime) -> 
     
     # Try CryptoCompare first
     logger.info(f"Fetching {symbol} data from CryptoCompare...")
-    df = fetcher._fetch_from_cryptocompare(symbol, start_date, end_date)
+    df = fetcher._fetch_from_cryptocompare(symbol, start_date=start_date, end_date=end_date)
     
     if df is not None:
         logger.info("Successfully fetched data from CryptoCompare")

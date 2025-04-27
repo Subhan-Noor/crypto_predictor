@@ -178,56 +178,105 @@ class PricePredictor:
     
     def __init__(self):
         self.models = {}
+        # Update with more realistic current prices for Bitcoin
         self.current_prices = {
-            'BTC': 65000,  # Mock current prices
-            'ETH': 3500,
-            'XRP': 0.65,
-            'ADA': 0.85,
-            'SOL': 145,
-            'DOT': 22
+            'BTC': 94500,  # Updated current prices
+            'ETH': 3100,
+            'XRP': 0.53,
+            'ADA': 0.45,
+            'SOL': 132,
+            'DOT': 7.5
         }
+        # Initialize sentiment model
+        from models.sentiment_model import SentimentModel
+        self.sentiment_model = SentimentModel()
         
-    def predict(self, symbol: str, timeframe: str = "24h") -> Dict:
+    def predict(self, symbol: str, timeframe: str = "24h", current_price: float = None, include_sentiment: bool = True) -> Dict:
         """
         Make price predictions for a cryptocurrency.
         
         Args:
             symbol: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
             timeframe: Prediction timeframe (24h, 7d, 30d)
+            current_price: Current price of the cryptocurrency (if provided)
+            include_sentiment: Whether to incorporate sentiment in the prediction
             
         Returns:
             Dictionary containing prediction details
         """
         try:
-            # Get current price
-            current_price = self.current_prices.get(symbol, 1000)
+            # Get current price (either from parameter or default)
+            if current_price is None:
+                current_price = self.current_prices.get(symbol, 1000)
+            
+            logger.info(f"Making prediction for {symbol} with current price: {current_price}")
             
             # For demo, generate predictions with reasonable variations
-            # In production, this would use actual trained models
             timeframe_multipliers = {
-                "24h": (0.05, 0.02),  # 5% mean change, 2% std
-                "7d": (0.12, 0.05),   # 12% mean change, 5% std
-                "30d": (0.25, 0.1)    # 25% mean change, 10% std
+                "24h": (0.01, 0.005),  # 1% mean change, 0.5% std - much more realistic for 24h
+                "7d": (0.03, 0.015),   # 3% mean change, 1.5% std
+                "30d": (0.08, 0.04)    # 8% mean change, 4% std
             }
             
-            mean_change, std_change = timeframe_multipliers.get(timeframe, (0.05, 0.02))
+            mean_change, std_change = timeframe_multipliers.get(timeframe, (0.01, 0.005))
+            
+            # Get sentiment data if requested
+            sentiment_score = None
+            if include_sentiment:
+                try:
+                    sentiment_score = self.sentiment_model.get_current_sentiment(symbol)
+                    logger.info(f"Using sentiment score: {sentiment_score} for prediction")
+                    
+                    # Adjust the mean change based on sentiment
+                    # Sentiment ranges from 0 (negative) to 1 (positive)
+                    # At 0.5 (neutral), we keep the original mean_change
+                    # Below 0.5, we reduce the mean change (more bearish)
+                    # Above 0.5, we increase the mean change (more bullish)
+                    sentiment_impact = (sentiment_score - 0.5) * 2  # Scale to [-1, 1]
+                    
+                    # Calculate sentiment influence based on timeframe
+                    # Longer timeframes are more influenced by sentiment
+                    sentiment_weight = {
+                        "24h": 0.2,  # 20% weight for 24h predictions
+                        "7d": 0.35,  # 35% weight for 7d predictions
+                        "30d": 0.5   # 50% weight for 30d predictions
+                    }.get(timeframe, 0.2)
+                    
+                    # Apply sentiment adjustment
+                    sentiment_adjustment = sentiment_impact * sentiment_weight * mean_change
+                    adjusted_mean_change = mean_change + sentiment_adjustment
+                    
+                    logger.info(f"Sentiment adjustment: {sentiment_adjustment:+.2%}, New mean change: {adjusted_mean_change:.2%}")
+                    mean_change = adjusted_mean_change
+                except Exception as e:
+                    logger.warning(f"Failed to apply sentiment to prediction: {e}")
             
             # Generate prediction with some randomness
             change = np.random.normal(mean_change, std_change)
             predicted_price = current_price * (1 + change)
             
+            logger.info(f"Raw predicted price: {predicted_price} (change: {change*100:.2f}%)")
+            
+            # Ensure prediction stays within realistic bounds
+            if predicted_price < current_price * 0.9:
+                predicted_price = current_price * np.random.uniform(0.9, 1.0)
+            if predicted_price > current_price * 1.1:
+                predicted_price = current_price * np.random.uniform(1.0, 1.1)
+            
             # Calculate confidence interval
-            confidence_range = std_change * current_price
+            confidence_range = std_change * current_price * 2
             confidence_interval = (
-                predicted_price - confidence_range,
-                predicted_price + confidence_range
+                max(predicted_price - confidence_range, current_price * 0.85),
+                min(predicted_price + confidence_range, current_price * 1.15)
             )
             
             return {
                 'current_price': current_price,
                 'predicted_price': predicted_price,
                 'confidence_interval': confidence_interval,
-                'timeframe': timeframe
+                'timeframe': timeframe,
+                'sentiment_used': sentiment_score is not None,
+                'sentiment_score': sentiment_score
             }
             
         except Exception as e:

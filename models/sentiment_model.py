@@ -7,35 +7,68 @@ import random  # Temporary for demo
 from textblob import TextBlob
 import requests
 from datetime import datetime, timedelta
+import json
+import os
+from data_fetchers.sentiment_fetcher import SentimentFetcher
 
 class SentimentModel:
     def __init__(self):
-        self.fear_greed_url = "https://api.alternative.me/fng/"
-        self.news_cache: Dict[str, Dict] = {}
+        self.sentiment_fetcher = SentimentFetcher()
+        self.cache_dir = 'data/sentiment'
         self.cache_duration = timedelta(minutes=5)
+        
+        # Ensure cache directory exists
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
 
     def get_current_sentiment(self, symbol: str) -> float:
         """
         Get current sentiment score for a cryptocurrency.
         Returns a value between 0 (very negative) and 1 (very positive).
-        For now, returns a combination of:
-        - Fear & Greed Index (normalized)
-        - Recent news sentiment
-        - Social media sentiment (mock data for now)
+        Uses the exact same sentiment data as shown on the Analysis page.
         """
         try:
-            # Get Fear & Greed Index
-            fear_greed_score = self._get_fear_greed_index()
+            # Check cache first for consistency
+            cache_file = os.path.join(self.cache_dir, f"{symbol.lower()}_sentiment.json")
             
-            # Get news sentiment (mock for now)
-            news_sentiment = self._analyze_recent_news(symbol)
+            # Use cache if it exists and is recent
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'r') as f:
+                        cache_data = json.load(f)
+                    
+                    # Check if cache is recent (within 5 minutes)
+                    cache_time = datetime.fromisoformat(cache_data.get('timestamp', '2000-01-01T00:00:00'))
+                    if datetime.now() - cache_time < self.cache_duration:
+                        # Return the exact same data used by the Analysis page
+                        if 'data' in cache_data and len(cache_data['data']) > 0:
+                            return cache_data['data'][-1]['sentiment']
+                except Exception as e:
+                    print(f"Error reading sentiment cache: {e}")
             
-            # Combine scores (simple average for now)
-            # We'll weight these properly in the full implementation
-            combined_score = (fear_greed_score + news_sentiment) / 2
+            # If not in cache or cache expired, fetch fresh data
+            sentiment_data = self.sentiment_fetcher.get_historical_sentiment(symbol, days=7)
             
-            return max(0.0, min(1.0, combined_score))
-        
+            # Cache the result for consistency
+            cache_data = {
+                'timestamp': datetime.now().isoformat(),
+                'symbol': symbol,
+                'data': sentiment_data
+            }
+            
+            try:
+                with open(cache_file, 'w') as f:
+                    json.dump(cache_data, f)
+            except Exception as e:
+                print(f"Error writing sentiment cache: {e}")
+            
+            # Return the latest sentiment value
+            if sentiment_data and len(sentiment_data) > 0:
+                return sentiment_data[-1]['sentiment']
+            else:
+                # Fallback if no data
+                return 0.5
+            
         except Exception as e:
             print(f"Error getting sentiment: {e}")
             # Return neutral sentiment on error
