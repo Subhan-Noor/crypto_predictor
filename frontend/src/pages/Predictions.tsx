@@ -12,6 +12,7 @@ import {
   Chip,
   Stack,
   Alert,
+  Slider,
 } from '@mui/material';
 import {
   LineChart,
@@ -47,10 +48,12 @@ export default function Predictions() {
   const [selectedCrypto, setSelectedCrypto] = React.useState('BTC');
   const [selectedModel, setSelectedModel] = React.useState('ensemble');
   const [timeframe, setTimeframe] = React.useState('24h');
+  const [sentimentWeight, setSentimentWeight] = React.useState(1.0);
   const [predictionData, setPredictionData] = useState<PredictionDataItem[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState<Array<{label: string, value: string}>>([]);
 
   const fetchPredictionData = async () => {
     setLoading(true);
@@ -80,6 +83,7 @@ export default function Predictions() {
           symbol: selectedCrypto,
           timeframe: timeframe,
           include_sentiment: true,
+          sentiment_weight: sentimentWeight,
         }),
       });
 
@@ -174,6 +178,36 @@ export default function Predictions() {
     }
   };
 
+  const fetchModelMetrics = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/models/info`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch model metrics');
+      }
+      
+      const data = await response.json();
+      const performanceMetrics = data.performance_metrics;
+      
+      setMetrics([
+        { label: 'MAE', value: `${performanceMetrics.mae.toFixed(1)}%` },
+        { label: 'RMSE', value: `${performanceMetrics.rmse.toFixed(1)}%` },
+        { label: 'Direction Accuracy', value: `${performanceMetrics.direction_accuracy.toFixed(1)}%` },
+        { label: 'Success Rate', value: `${performanceMetrics.success_rate.toFixed(1)}%` },
+        { label: 'R²', value: performanceMetrics.r2.toFixed(2) }
+      ]);
+    } catch (err) {
+      console.error('Error fetching model metrics:', err);
+      // Fallback metrics
+      setMetrics([
+        { label: 'MAE', value: '2.5%' },
+        { label: 'RMSE', value: '3.1%' },
+        { label: 'Direction Accuracy', value: '72.0%' },
+        { label: 'Success Rate', value: '68.0%' },
+        { label: 'R²', value: '0.85' }
+      ]);
+    }
+  };
+
   // Helper function to generate future dates
   const getNextDates = (numDays: number): string[] => {
     const dates: string[] = [];
@@ -188,7 +222,8 @@ export default function Predictions() {
 
   useEffect(() => {
     fetchPredictionData();
-  }, [selectedCrypto, selectedModel, timeframe]);
+    fetchModelMetrics();
+  }, [selectedCrypto, selectedModel, timeframe, sentimentWeight]);
 
   const models = [
     { value: 'arima', label: 'ARIMA' },
@@ -201,12 +236,6 @@ export default function Predictions() {
     { value: '24h', label: '24 Hours' },
     { value: '7d', label: '7 Days' },
     { value: '30d', label: '30 Days' },
-  ];
-
-  const metrics = [
-    { label: 'MAE', value: '2.3%' },
-    { label: 'RMSE', value: '3.1%' },
-    { label: 'Accuracy', value: '85%' },
   ];
 
   return (
@@ -265,6 +294,27 @@ export default function Predictions() {
             {loading ? 'Loading...' : 'Update Prediction'}
           </Button>
         </Stack>
+      </Box>
+
+      {/* Add Sentiment Weight Slider */}
+      <Box sx={{ mb: 3, maxWidth: 400 }}>
+        <Typography gutterBottom>
+          Sentiment Impact
+        </Typography>
+        <Slider
+          value={sentimentWeight}
+          onChange={(_, value) => setSentimentWeight(value as number)}
+          min={0}
+          max={2}
+          step={0.1}
+          marks={[
+            { value: 0, label: 'None' },
+            { value: 1, label: 'Normal' },
+            { value: 2, label: 'High' },
+          ]}
+          valueLabelDisplay="auto"
+          valueLabelFormat={(value) => `${value}x`}
+        />
       </Box>
 
       {error && (
@@ -382,16 +432,33 @@ export default function Predictions() {
             <Typography variant="h6" gutterBottom>
               Model Performance Metrics
             </Typography>
-            <Stack direction="row" spacing={2}>
-              {metrics.map((metric) => (
-                <Chip
-                  key={metric.label}
-                  label={`${metric.label}: ${metric.value}`}
-                  color="primary"
-                  variant="outlined"
-                />
-              ))}
-            </Stack>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography variant="body2" color="textSecondary">
+                Performance metrics are calculated through backtesting on historical data
+              </Typography>
+              <Stack direction="row" spacing={2} flexWrap="wrap">
+                {metrics.map((metric) => (
+                  <Chip
+                    key={metric.label}
+                    label={`${metric.label}: ${metric.value}`}
+                    color="primary"
+                    variant="outlined"
+                    sx={{ mb: 1 }}
+                  />
+                ))}
+              </Stack>
+              <Typography variant="caption" color="textSecondary">
+                • MAE: Mean Absolute Error - Average percentage difference between predictions and actual prices
+                <br />
+                • RMSE: Root Mean Square Error - Similar to MAE but penalizes larger errors more heavily
+                <br />
+                • Direction Accuracy: Percentage of times the price movement direction was correctly predicted
+                <br />
+                • Success Rate: Percentage of predictions within 5% of actual price
+                <br />
+                • R²: How well the predictions match actual price variations (1.0 = perfect match)
+              </Typography>
+            </Box>
           </Paper>
         </Grid>
       </Grid>

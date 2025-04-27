@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Diagnostic Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .results {
+      margin-top: 20px;
+    }
+    .result-item {
+      background-color: #fff;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 200px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .error {
+      background-color: #ffeeee;
+      color: #d33;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    pre {
+      background-color: #f0f0f0;
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .actions {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>API Diagnostic Test</h1>
+    <p>This page directly tests the API connectivity to verify the backend is working properly.</p>
+    
+    <div id="app" class="results">
+      <div class="loading">Loading API data...</div>
+    </div>
+    
+    <div class="actions">
+      <h3>Direct API Links</h3>
+      <ul>
+        <li><a href="http://localhost:8000/current-price/BTC" target="_blank">Current Price Endpoint</a></li>
+        <li><a href="http://localhost:8000/historical/BTC?days=30&include_indicators=true" target="_blank">Historical Data Endpoint</a></li>
+        <li>(Prediction endpoint requires POST request)</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:8000';
+    const appElement = document.getElementById('app');
+
+    async function runTests() {
+      try {
+        // Test current price endpoint
+        console.log('Testing current price endpoint...');
+        const priceResponse = await fetch(`${API_BASE_URL}/current-price/BTC`);
+        if (!priceResponse.ok) {
+          throw new Error(`Current price request failed: ${priceResponse.status}`);
+        }
+        const priceData = await priceResponse.json();
+        
+        // Test prediction endpoint
+        console.log('Testing prediction endpoint...');
+        const predictionResponse = await fetch(`${API_BASE_URL}/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            symbol: 'BTC',
+            timeframe: '24h',
+            include_sentiment: true
+          })
+        });
+        if (!predictionResponse.ok) {
+          throw new Error(`Prediction request failed: ${predictionResponse.status}`);
+        }
+        const predictionData = await predictionResponse.json();
+        
+        // Test historical data endpoint
+        console.log('Testing historical data endpoint...');
+        const historicalResponse = await fetch(
+          `${API_BASE_URL}/historical/BTC?days=30&include_indicators=true`
+        );
+        if (!historicalResponse.ok) {
+          throw new Error(`Historical data request failed: ${historicalResponse.status}`);
+        }
+        const historicalData = await historicalResponse.json();
+        
+        // Display results
+        appElement.innerHTML = `
+          <h2>API Test Results</h2>
+          
+          <div class="result-item">
+            <h3>Current Price</h3>
+            <pre>${JSON.stringify(priceData, null, 2)}</pre>
+          </div>
+          
+          <div class="result-item">
+            <h3>Prediction</h3>
+            <pre>${JSON.stringify(predictionData, null, 2)}</pre>
+          </div>
+          
+          <div class="result-item">
+            <h3>Historical Data (first 3 items)</h3>
+            <pre>${JSON.stringify(historicalData.data.slice(0, 3), null, 2)}</pre>
+            <p><strong>Total historical data points:</strong> ${historicalData.data.length}</p>
+          </div>
+          
+          <div class="result-item" style="background-color: #e8ffe8;">
+            <h3>✅ All API Tests Passed</h3>
+            <p>Your backend API is working correctly and returning valid data.</p>
+            <p>If your main application isn't displaying this data, the issue is likely in your frontend code.</p>
+          </div>
+        `;
+        
+      } catch (error) {
+        console.error('Diagnostic test failed:', error);
+        appElement.innerHTML = `
+          <div class="error">
+            <h2>Error</h2>
+            <p>${error.message}</p>
+          </div>
+          
+          <div class="result-item">
+            <h3>Troubleshooting Steps</h3>
+            <ol>
+              <li>Make sure your backend API is running at ${API_BASE_URL}</li>
+              <li>Check for CORS issues in your browser's developer console</li>
+              <li>Ensure there are no network connectivity issues</li>
+              <li>Verify your API endpoints are correctly configured</li>
+            </ol>
+          </div>
+        `;
+      }
+    }
+
+    // Run the tests when the page loads
+    runTests();
+  </script>
+</body>
+</html> 

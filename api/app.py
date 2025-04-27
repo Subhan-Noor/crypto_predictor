@@ -180,6 +180,7 @@ class PredictionRequest(BaseModel):
     symbol: str
     timeframe: str = "24h"  # Options: 24h, 7d, 30d
     include_sentiment: bool = True
+    sentiment_weight: float = 1.0  # Scale factor for sentiment impact (0.0 to 2.0)
 
 class PredictionResponse(BaseModel):
     symbol: str
@@ -223,7 +224,8 @@ async def get_prediction(request: PredictionRequest):
             symbol=request.symbol,
             timeframe=request.timeframe,
             current_price=current_price,
-            include_sentiment=request.include_sentiment
+            include_sentiment=request.include_sentiment,
+            sentiment_weight=request.sentiment_weight
         )
         
         # Format response
