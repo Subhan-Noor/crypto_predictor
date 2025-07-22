@@ -1,6 +1,13 @@
 import React from 'react'
-import { EnhancedDashboard } from '../components/EnhancedDashboard'
+import { Dashboard } from '../components/Dashboard'
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
 
 export default function Home() {
-  return <EnhancedDashboard />
+  return (
+    <div>
+      <Dashboard />
+    </div>
+  )
 } 
