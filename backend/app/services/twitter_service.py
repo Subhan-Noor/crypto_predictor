@@ -1,24 +1,20 @@
-import twint
+import snscrape.modules.twitter as sntwitter
 from typing import List
 
 class TwitterScraper:
-    """Service to scrape Twitter data using Twint"""
+    """Service to scrape Twitter data using snscrape"""
 
     def __init__(self):
         pass
 
     def fetch_tweets(self, query: str, limit: int = 100) -> List[str]:
-        """Fetch tweets for a given query using Twint"""
-        c = twint.Config()
-        c.Search = query
-        c.Limit = limit
-        c.Store_object = True
-        c.Hide_output = True
-
-        twint.run.Search(c)
-
-        tweets = twint.output.tweets_list
-        return [tweet.tweet for tweet in tweets]
+        """Fetch tweets for a given query using snscrape"""
+        tweets = []
+        for i, tweet in enumerate(sntwitter.TwitterSearchScraper(query).get_items()):
+            if i >= limit:
+                break
+            tweets.append(tweet.content)
+        return tweets
 
     def get_crypto_sentiment(self, currency: str) -> float:
         """Get sentiment for a specific cryptocurrency"""

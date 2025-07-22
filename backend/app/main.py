@@ -13,10 +13,14 @@ from .database import db_manager
 from .services.twitter_service import TwitterScraper
 from .services.reddit_service import RedditScraper
 from .services.binance_service import BinancePriceFetcher
+from .models.crypto_models import PredictionRequest, PredictionResponse, DataStatusResponse, HealthResponse
+
+# Import ML components for Stage 3
+from ..ml.prediction_pipeline import CryptoPredictionPipeline
 
 app = FastAPI(
     title="Crypto Price Prediction API",
-    description="API for cryptocurrency price prediction using ML and sentiment analysis",
+    description="API for cryptocurrency price prediction using ML models",
     version="1.0.0"
 )
 
@@ -30,9 +34,12 @@ app.add_middleware(
 )
 
 # Initialize services
-price_fetcher = BinancePriceFetcher()
 twitter_scraper = TwitterScraper()
 reddit_scraper = RedditScraper()
+binance_fetcher = BinancePriceFetcher()
+
+# Initialize ML prediction pipeline
+prediction_pipeline = CryptoPredictionPipeline()
 
 
 @app.get("/")
@@ -48,127 +55,343 @@ async def read_root():
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
-    return {
-        "status": "healthy",
-        "database": "connected" if db_manager.is_connected() else "disconnected",
-        "timestamp": datetime.now().isoformat(),
-        "environment": settings.environment
-    }
+    try:
+        # Test database connection
+        db_status = db_manager.is_connected()
+        
+        # Get basic stats
+        btc_count = len(await db_manager.get_records('crypto_prices', {'currency': 'BTC'}))
+        eth_count = len(await db_manager.get_records('crypto_prices', {'currency': 'ETH'}))
+        
+        return {
+            "status": "healthy" if db_status else "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "database": {
+                "connected": db_status,
+                "btc_records": btc_count,
+                "eth_records": eth_count
+            },
+            "services": {
+                "binance_api": "available",
+                "twitter_scraper": "available",
+                "reddit_scraper": "available"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
 
 @app.get("/prices/{currency}")
-async def get_crypto_prices(
-    currency: str,
-    limit: int = 30,
-    days: Optional[int] = None
-):
-    """Get historical price data for a cryptocurrency"""
-    if currency.upper() not in ["BTC", "ETH"]:
-        raise HTTPException(status_code=400, detail="Supported currencies: BTC, ETH")
-    
+async def get_prices(currency: str, days: int = 30):
+    """Get historical price data for a currency"""
     try:
-        symbol = f"{currency.upper()}USDT"
-        historical_data = price_fetcher.get_historical_prices(symbol, limit=limit)
+        if currency.upper() not in ['BTC', 'ETH']:
+            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Get records from database
+        records = await db_manager.get_records('crypto_prices', {
+            'currency': currency.upper()
+        })
+        
+        # Filter by date range and sort
+        filtered_records = []
+        for record in records:
+            record_date = record['date']
+            if isinstance(record_date, str):
+                record_date = datetime.strptime(record_date, '%Y-%m-%d %H:%M:%S%z')
+            if start_date <= record_date <= end_date:
+                filtered_records.append({
+                    'date': record['date'],
+                    'open': float(record['open']),
+                    'high': float(record['high']),
+                    'low': float(record['low']),
+                    'close': float(record['close']),
+                    'volume': float(record['volume'])
+                })
+        
+        # Sort by date
+        filtered_records.sort(key=lambda x: x['date'])
         
         return {
             "currency": currency.upper(),
-            "data": historical_data,
-            "count": len(historical_data)
+            "data": filtered_records,
+            "count": len(filtered_records)
         }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching price data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching prices: {str(e)}")
 
 
 @app.get("/sentiment/{currency}")
-async def get_crypto_sentiment(
-    currency: str,
-    limit: int = 30
-):
-    """Get historical sentiment data for a cryptocurrency"""
-    if currency.upper() not in ["BTC", "ETH"]:
-        raise HTTPException(status_code=400, detail="Supported currencies: BTC, ETH")
-    
+async def get_sentiment(currency: str, days: int = 30):
+    """Get historical sentiment data for a currency"""
     try:
-        twitter_sentiment = twitter_scraper.get_crypto_sentiment(currency)
-        reddit_sentiment = reddit_scraper.get_crypto_sentiment(currency)
+        if currency.upper() not in ['BTC', 'ETH']:
+            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Get records from database
+        records = await db_manager.get_records('crypto_sentiment', {
+            'currency': currency.upper()
+        })
+        
+        # Filter by date range
+        filtered_records = []
+        for record in records:
+            record_date = record['date']
+            if isinstance(record_date, str):
+                record_date = datetime.strptime(record_date, '%Y-%m-%d %H:%M:%S%z')
+            if start_date <= record_date <= end_date:
+                filtered_records.append({
+                    'date': record['date'],
+                    'twitter_sentiment': float(record['twitter_sentiment']) if record['twitter_sentiment'] else None,
+                    'reddit_sentiment': float(record['reddit_sentiment']) if record['reddit_sentiment'] else None
+                })
+        
+        # Sort by date
+        filtered_records.sort(key=lambda x: x['date'])
         
         return {
             "currency": currency.upper(),
-            "twitter_sentiment": twitter_sentiment,
-            "reddit_sentiment": reddit_sentiment
+            "data": filtered_records,
+            "count": len(filtered_records)
         }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching sentiment data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching sentiment: {str(e)}")
 
 
 @app.get("/current_prices")
 async def get_current_prices():
-    """Get current prices for all supported currencies"""
+    """Get current prices for BTC and ETH"""
     try:
-        prices = {}
+        # Fetch current prices
+        btc_price = await binance_fetcher.get_current_price('BTCUSDT')
+        eth_price = await binance_fetcher.get_current_price('ETHUSDT')
         
-        for currency in ["BTC", "ETH"]:
-            symbol = f"{currency.upper()}USDT"
-            current_price = price_fetcher.get_current_price(symbol)
-            if current_price:
-                prices[currency] = current_price
-        
-        return prices
-        
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "BTC": btc_price,
+            "ETH": eth_price
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching current prices: {str(e)}")
-
-
-@app.post("/predict/{currency}")
-async def predict_price_movement(currency: str):
-    """Predict price movement for a cryptocurrency (placeholder - will be implemented in Stage 3)"""
-    if currency.upper() not in ["BTC", "ETH"]:
-        raise HTTPException(status_code=400, detail="Supported currencies: BTC, ETH")
-    
-    # Placeholder response - will be implemented with ML model in Stage 3
-    return {
-        "currency": currency.upper(),
-        "prediction": "up",  # placeholder
-        "confidence": 0.75,  # placeholder
-        "target_date": (datetime.now() + timedelta(days=7)).isoformat(),
-        "message": "This is a placeholder. ML model will be implemented in Stage 3."
-    }
 
 
 @app.get("/data_status")
 async def get_data_status():
     """Get status of available data in the database"""
-    db_client = db_manager.get_client()
-    if not db_client:
-        raise HTTPException(status_code=503, detail="Database connection unavailable")
-    
     try:
         status = {}
         
-        for currency in ["BTC", "ETH"]:
-            # Count price records
-            price_count = db_client.table("crypto_prices").select("id", count="exact").eq("currency", currency).execute()
+        for currency in ['BTC', 'ETH']:
+            # Get price data stats
+            price_records = await db_manager.get_records('crypto_prices', {'currency': currency})
+            sentiment_records = await db_manager.get_records('crypto_sentiment', {'currency': currency})
             
-            # Count sentiment records
-            sentiment_count = db_client.table("crypto_sentiment").select("id", count="exact").eq("currency", currency).execute()
+            latest_price_date = None
+            latest_sentiment_date = None
             
-            # Get latest dates
-            latest_price = db_client.table("crypto_prices").select("date").eq("currency", currency).order("date", desc=True).limit(1).execute()
-            latest_sentiment = db_client.table("crypto_sentiment").select("date").eq("currency", currency).order("date", desc=True).limit(1).execute()
+            if price_records:
+                dates = [r['date'] for r in price_records]
+                latest_price_date = max(dates)
+            
+            if sentiment_records:
+                dates = [r['date'] for r in sentiment_records]
+                latest_sentiment_date = max(dates)
             
             status[currency] = {
-                "price_records": price_count.count,
-                "sentiment_records": sentiment_count.count,
-                "latest_price_date": latest_price.data[0]["date"] if latest_price.data else None,
-                "latest_sentiment_date": latest_sentiment.data[0]["date"] if latest_sentiment.data else None
+                "price_records": len(price_records),
+                "sentiment_records": len(sentiment_records),
+                "latest_price_date": latest_price_date,
+                "latest_sentiment_date": latest_sentiment_date
             }
         
         return status
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching data status: {str(e)}")
+
+
+# ===== STAGE 3: ML PREDICTION ENDPOINTS =====
+
+@app.post("/predict/{currency}", response_model=PredictionResponse)
+async def make_prediction(currency: str, request: PredictionRequest):
+    """
+    Make a price prediction for a cryptocurrency
+    
+    This endpoint uses trained ML models to predict if the price will go UP or DOWN
+    over the specified prediction horizon (default: 7 days).
+    """
+    try:
+        if currency.upper() not in ['BTC', 'ETH']:
+            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        
+        # Use the prediction horizon from request, default to 7 days
+        if hasattr(request, 'prediction_horizon'):
+            prediction_horizon = request.prediction_horizon
+        else:
+            prediction_horizon = 7
+        
+        # Make prediction using the best available model
+        prediction_result = await prediction_pipeline.make_prediction(
+            currency=currency.upper(),
+            model_type="best"
+        )
+        
+        # Save prediction to database
+        prediction_id = await prediction_pipeline.save_prediction(prediction_result)
+        prediction_result['id'] = prediction_id
+        
+        # Format response
+        response = PredictionResponse(
+            currency=currency.upper(),
+            prediction_date=datetime.now().isoformat(),
+            prediction_horizon=prediction_horizon,
+            predicted_direction=prediction_result['predicted_direction'],
+            confidence_score=prediction_result['confidence_score'],
+            model_version=prediction_result['model_version']
+        )
+        
+        return response
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error making prediction: {str(e)}")
+
+
+@app.get("/predictions/{currency}")
+async def get_predictions(currency: str, days: int = 30):
+    """
+    Get recent predictions for a cryptocurrency
+    
+    Returns historical predictions made by the ML models, useful for
+    tracking prediction accuracy over time.
+    """
+    try:
+        if currency.upper() not in ['BTC', 'ETH']:
+            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        
+        # Get recent predictions
+        predictions = await prediction_pipeline.get_recent_predictions(
+            currency=currency.upper(),
+            days=days
+        )
+        
+        return {
+            "currency": currency.upper(),
+            "predictions": predictions,
+            "count": len(predictions)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching predictions: {str(e)}")
+
+
+@app.get("/prediction_accuracy/{currency}")
+async def get_prediction_accuracy(currency: str, days: int = 30):
+    """
+    Evaluate the accuracy of recent predictions
+    
+    Compares predictions with actual price movements to calculate
+    accuracy metrics and model performance statistics.
+    """
+    try:
+        if currency.upper() not in ['BTC', 'ETH']:
+            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        
+        # Evaluate prediction accuracy
+        accuracy_results = await prediction_pipeline.evaluate_prediction_accuracy(
+            currency=currency.upper(),
+            days=days
+        )
+        
+        return {
+            "currency": currency.upper(),
+            "accuracy_metrics": accuracy_results,
+            "model_performance": {} # Placeholder, actual model performance will be added later
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error evaluating prediction accuracy: {str(e)}")
+
+
+@app.post("/predictions/daily")
+async def make_daily_predictions():
+    """
+    Generate daily predictions for both BTC and ETH
+    
+    This endpoint can be called daily (e.g., via cron job) to generate
+    fresh predictions using the latest available data.
+    """
+    try:
+        results = await prediction_pipeline.make_daily_predictions()
+        
+        return {
+            "message": "Daily predictions completed",
+            "timestamp": datetime.now().isoformat(),
+            "results": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error making daily predictions: {str(e)}")
+
+
+@app.get("/models/status")
+async def get_model_status():
+    """
+    Get status of available trained models
+    
+    Returns information about which models are available for each currency,
+    their training dates, and performance metrics.
+    """
+    try:
+        import glob
+        import os
+        from ..ml.model_trainer import CryptoModelTrainer
+        
+        model_trainer = CryptoModelTrainer()
+        models_dir = "models"
+        
+        if not os.path.exists(models_dir):
+            return {"message": "No models directory found"}
+        
+        status = {}
+        
+        for currency in ['BTC', 'ETH']:
+            status[currency] = {
+                "available_models": [],
+                "latest_models": {}
+            }
+            
+            # Find model files for this currency
+            pattern = os.path.join(models_dir, f"{currency}_*.pkl")
+            model_files = glob.glob(pattern)
+            
+            for model_file in model_files:
+                model_name = os.path.basename(model_file).replace(f"{currency}_", "").replace(".pkl", "")
+                status[currency]["available_models"].append(model_name)
+                
+                # Get model info
+                try:
+                    model_info = model_trainer.load_model_info(model_file)
+                    status[currency]["latest_models"][model_name] = model_info
+                except:
+                    status[currency]["latest_models"][model_name] = {"status": "loaded"}
+        
+        return {
+            "models_directory": models_dir,
+            "currencies": status,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
 
 
 if __name__ == "__main__":
