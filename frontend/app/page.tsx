@@ -1,6 +1,6 @@
 import React from 'react'
-import { Dashboard } from '../components/Dashboard'
+import { EnhancedDashboard } from '../components/EnhancedDashboard'
 
 export default function Home() {
-  return <Dashboard />
+  return <EnhancedDashboard />
 } 
