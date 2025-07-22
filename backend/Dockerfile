@@ -15,13 +15,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         libpq-dev \
+    && pip install --no-cache-dir -r backend/requirements.txt \
+    && apt-get purge -y --auto-remove libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Only copy necessary app files and directories
 COPY backend/app ./app
 COPY backend/ml ./ml
 COPY backend/models ./models
