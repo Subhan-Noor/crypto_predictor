@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Any
 import sys
 import os
@@ -103,30 +103,28 @@ async def get_prices(currency: str, days: int = 30):
     try:
         if currency.upper() not in ['BTC', 'ETH']:
             raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        # Calculate date range
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
-        
-        # Get records from database
         records = await db_manager.get_records('crypto_prices', {
             'currency': currency.upper()
         })
-        
-        # Filter by date range and sort
         filtered_records = []
         for record in records:
             record_date = record['date']
             if isinstance(record_date, str):
                 try:
-                    # Try ISO 8601 first
                     record_date = datetime.fromisoformat(record_date)
+                    if record_date.tzinfo is None:
+                        record_date = record_date.replace(tzinfo=timezone.utc)
                 except Exception:
                     try:
-                        # Try dateutil parser as fallback
                         record_date = parse_date(record_date)
+                        if record_date.tzinfo is None:
+                            record_date = record_date.replace(tzinfo=timezone.utc)
                     except Exception:
                         continue
+            if record_date.tzinfo is None:
+                record_date = record_date.replace(tzinfo=timezone.utc)
             if start_date <= record_date <= end_date:
                 filtered_records.append({
                     'date': record['date'],
@@ -136,10 +134,7 @@ async def get_prices(currency: str, days: int = 30):
                     'close': float(record['close']),
                     'volume': float(record['volume'])
                 })
-        
-        # Sort by date
         filtered_records.sort(key=lambda x: x['date'])
-        
         return {
             "currency": currency.upper(),
             "data": filtered_records,
@@ -155,38 +150,35 @@ async def get_sentiment(currency: str, days: int = 30):
     try:
         if currency.upper() not in ['BTC', 'ETH']:
             raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        # Calculate date range
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
-        
-        # Get records from database
         records = await db_manager.get_records('crypto_sentiment', {
             'currency': currency.upper()
         })
-        
-        # Filter by date range
         filtered_records = []
         for record in records:
             record_date = record['date']
             if isinstance(record_date, str):
                 try:
                     record_date = datetime.fromisoformat(record_date)
+                    if record_date.tzinfo is None:
+                        record_date = record_date.replace(tzinfo=timezone.utc)
                 except Exception:
                     try:
                         record_date = parse_date(record_date)
+                        if record_date.tzinfo is None:
+                            record_date = record_date.replace(tzinfo=timezone.utc)
                     except Exception:
                         continue
+            if record_date.tzinfo is None:
+                record_date = record_date.replace(tzinfo=timezone.utc)
             if start_date <= record_date <= end_date:
                 filtered_records.append({
                     'date': record['date'],
                     'twitter_sentiment': float(record['twitter_sentiment']) if record['twitter_sentiment'] else None,
                     'reddit_sentiment': float(record['reddit_sentiment']) if record['reddit_sentiment'] else None
                 })
-        
-        # Sort by date
         filtered_records.sort(key=lambda x: x['date'])
-        
         return {
             "currency": currency.upper(),
             "data": filtered_records,

@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import os
 import glob
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional, Any
 import sys
 
@@ -124,12 +124,24 @@ class CryptoPredictionPipeline:
             DataFrame with features ready for prediction
         """
         if prediction_date is None:
-            prediction_date = datetime.now().date()
+            prediction_date = datetime.now(timezone.utc).date()
         
         # Load recent data (we need historical data for feature engineering)
-        start_date = prediction_date - timedelta(days=60)  # Get 60 days of history
+        start_date = (prediction_date - timedelta(days=60))
         end_date = prediction_date
         
+        # Ensure start_date and end_date are timezone-aware
+        if isinstance(start_date, datetime):
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+        else:
+            start_date = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        if isinstance(end_date, datetime):
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+        else:
+            end_date = datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc)
+
         # Load data
         data = await self.preprocessor.load_data(currency, start_date, end_date)
         
@@ -214,7 +226,7 @@ class CryptoPredictionPipeline:
             # Create prediction result
             prediction_result = {
                 'currency': currency,
-                'prediction_date': prediction_date or datetime.now().date(),
+                'prediction_date': (prediction_date or datetime.now(timezone.utc).date()),
                 'prediction_horizon': 7,  # 7 days ahead
                 'predicted_direction': predicted_direction,
                 'confidence_score': float(confidence),

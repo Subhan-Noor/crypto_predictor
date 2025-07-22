@@ -20,6 +20,14 @@ export const PriceCard: React.FC<PriceCardProps> = ({ price, isLoading = false }
     )
   }
 
+  if (!price || price.price === undefined) {
+    return (
+      <div className="bg-dark-800 rounded-lg p-6 border border-dark-700 text-center">
+        <div className="text-gray-400">Price data unavailable</div>
+      </div>
+    )
+  }
+
   const isPositive = price.change_percentage_24h >= 0
   const changeColor = isPositive ? 'text-crypto-green' : 'text-crypto-red'
   const bgColor = price.currency === 'BTC' ? 'crypto-bitcoin' : 'crypto-ethereum'

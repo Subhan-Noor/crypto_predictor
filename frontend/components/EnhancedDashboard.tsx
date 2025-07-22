@@ -208,8 +208,16 @@ export const EnhancedDashboard: React.FC = () => {
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {state.currentPrices.BTC && <PriceCard price={state.currentPrices.BTC} />}
-        {state.currentPrices.ETH && <PriceCard price={state.currentPrices.ETH} />}
+        {state.currentPrices.BTC && state.currentPrices.BTC.price !== undefined ? (
+          <PriceCard price={state.currentPrices.BTC} />
+        ) : (
+          <div className="bg-dark-800 rounded-lg p-6 border border-dark-700 text-center text-gray-400">BTC price unavailable</div>
+        )}
+        {state.currentPrices.ETH && state.currentPrices.ETH.price !== undefined ? (
+          <PriceCard price={state.currentPrices.ETH} />
+        ) : (
+          <div className="bg-dark-800 rounded-lg p-6 border border-dark-700 text-center text-gray-400">ETH price unavailable</div>
+        )}
       </div>
     )
   }
@@ -240,9 +248,7 @@ export const EnhancedDashboard: React.FC = () => {
           {state.predictions?.BTC ? (
             <PredictionCard prediction={state.predictions.BTC} />
           ) : (
-            <div className="bg-dark-800 rounded-lg">
-              <NoPredictionsState currency="BTC" onRetry={loadPredictions} />
-            </div>
+            <div className="bg-dark-800 rounded-lg p-6 border border-dark-700 text-center text-gray-400">BTC prediction unavailable</div>
           )}
         </div>
         
@@ -251,9 +257,7 @@ export const EnhancedDashboard: React.FC = () => {
           {state.predictions?.ETH ? (
             <PredictionCard prediction={state.predictions.ETH} />
           ) : (
-            <div className="bg-dark-800 rounded-lg">
-              <NoPredictionsState currency="ETH" onRetry={loadPredictions} />
-            </div>
+            <div className="bg-dark-800 rounded-lg p-6 border border-dark-700 text-center text-gray-400">ETH prediction unavailable</div>
           )}
         </div>
       </div>
