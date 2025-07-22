@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Any
 import sys
 import os
 
@@ -25,9 +25,24 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+allowed_origins = [
+    "http://localhost:3000", 
+    "http://127.0.0.1:3000",
+    "https://localhost:3000"
+]
+
+# Add production origins if environment is production
+if settings.environment == "production":
+    # Add common Vercel domains - will be updated with actual domain after deployment
+    allowed_origins.extend([
+        "https://*.vercel.app",
+        "https://crypto-prediction-app.vercel.app",  # Update with actual domain
+        "https://crypto-prediction.vercel.app",     # Alternative domain
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Frontend URLs
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -392,6 +407,160 @@ async def get_model_status():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
+
+
+# ===== STAGE 6: AUTOMATION MONITORING ENDPOINTS =====
+
+@app.get("/automation/status")
+async def get_automation_status():
+    """
+    Get the current status of the automation pipeline
+    
+    Returns health information about:
+    - Database connectivity
+    - Recent data availability  
+    - ML models availability
+    - Recent predictions
+    """
+    try:
+        from scripts.daily_automation import AutomationManager
+        
+        # Run a quick health check
+        automation = AutomationManager()
+        health_result = await automation.run_health_check()
+        
+        # Get additional status information
+        status_info = {
+            "timestamp": datetime.now().isoformat(),
+            "database_connected": db_manager.is_connected(),
+            "health_check": health_result,
+            "environment": "production" if not settings.debug else "development"
+        }
+        
+        # Add recent predictions count
+        try:
+            recent_predictions_btc = await prediction_pipeline.get_recent_predictions("BTC", days=7)
+            recent_predictions_eth = await prediction_pipeline.get_recent_predictions("ETH", days=7)
+            
+            status_info["recent_predictions"] = {
+                "BTC": len(recent_predictions_btc) if recent_predictions_btc else 0,
+                "ETH": len(recent_predictions_eth) if recent_predictions_eth else 0,
+                "last_7_days_total": (len(recent_predictions_btc) if recent_predictions_btc else 0) + 
+                                   (len(recent_predictions_eth) if recent_predictions_eth else 0)
+            }
+        except Exception as e:
+            status_info["recent_predictions"] = {"error": str(e)}
+        
+        return status_info
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting automation status: {str(e)}")
+
+
+@app.post("/automation/trigger")
+async def trigger_automation(
+    task: str = "full",  # Options: full, data-ingestion, predictions, health-check
+    background_tasks: Optional[Any] = None
+):
+    """
+    Manually trigger automation tasks
+    
+    This endpoint allows manual triggering of automation tasks:
+    - full: Complete daily automation pipeline
+    - data-ingestion: Data ingestion only
+    - predictions: Predictions generation only
+    - health-check: Health check only
+    """
+    try:
+        if task not in ["full", "data-ingestion", "predictions", "health-check"]:
+            raise HTTPException(status_code=400, detail="Invalid task. Must be: full, data-ingestion, predictions, or health-check")
+        
+        from scripts.daily_automation import AutomationManager
+        
+        automation = AutomationManager()
+        
+        # Run the requested task
+        if task == "full":
+            result = await automation.run_full_pipeline()
+        elif task == "data-ingestion":
+            result = await automation.run_data_ingestion()
+        elif task == "predictions":
+            result = await automation.run_predictions()
+        elif task == "health-check":
+            result = await automation.run_health_check()
+        
+        return {
+            "message": f"Automation task '{task}' completed",
+            "timestamp": datetime.now().isoformat(),
+            "task": task,
+            "result": result
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error running automation task: {str(e)}")
+
+
+@app.get("/automation/history")
+async def get_automation_history(days: int = 7):
+    """
+    Get automation history and performance metrics
+    
+    Returns information about recent automation runs including:
+    - Recent predictions and their accuracy
+    - Data ingestion success rates
+    - System performance metrics
+    """
+    try:
+        # Get recent predictions for analysis
+        btc_predictions = await prediction_pipeline.get_recent_predictions("BTC", days=days)
+        eth_predictions = await prediction_pipeline.get_recent_predictions("ETH", days=days)
+        
+        # Get recent price data to check data ingestion
+        recent_btc_prices = db_manager.get_latest_prices("BTC", limit=days)
+        recent_eth_prices = db_manager.get_latest_prices("ETH", limit=days)
+        
+        # Calculate metrics
+        total_predictions = (len(btc_predictions) if btc_predictions else 0) + (len(eth_predictions) if eth_predictions else 0)
+        total_price_records = (len(recent_btc_prices) if recent_btc_prices else 0) + (len(recent_eth_prices) if recent_eth_prices else 0)
+        
+        # Expected records (2 currencies * days)
+        expected_predictions = days * 2  # Assuming daily predictions for both currencies
+        expected_price_records = days * 2  # Assuming daily price data for both currencies
+        
+        prediction_coverage = (total_predictions / expected_predictions) * 100 if expected_predictions > 0 else 0
+        data_coverage = (total_price_records / expected_price_records) * 100 if expected_price_records > 0 else 0
+        
+        history_info = {
+            "timestamp": datetime.now().isoformat(),
+            "period_days": days,
+            "predictions": {
+                "total": total_predictions,
+                "expected": expected_predictions,
+                "coverage_percentage": round(prediction_coverage, 1),
+                "by_currency": {
+                    "BTC": len(btc_predictions) if btc_predictions else 0,
+                    "ETH": len(eth_predictions) if eth_predictions else 0
+                }
+            },
+            "data_ingestion": {
+                "total_price_records": total_price_records,
+                "expected_records": expected_price_records,
+                "coverage_percentage": round(data_coverage, 1),
+                "by_currency": {
+                    "BTC": len(recent_btc_prices) if recent_btc_prices else 0,
+                    "ETH": len(recent_eth_prices) if recent_eth_prices else 0
+                }
+            },
+            "overall_health": {
+                "prediction_health": "good" if prediction_coverage >= 80 else "degraded" if prediction_coverage >= 50 else "poor",
+                "data_health": "good" if data_coverage >= 80 else "degraded" if data_coverage >= 50 else "poor"
+            }
+        }
+        
+        return history_info
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting automation history: {str(e)}")
 
 
 if __name__ == "__main__":
