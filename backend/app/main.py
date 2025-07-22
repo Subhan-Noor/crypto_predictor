@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Any
 import sys
 import os
+from dateutil.parser import parse as parse_date
+from pydantic import BaseModel
 
 # Add the parent directory to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -116,7 +118,15 @@ async def get_prices(currency: str, days: int = 30):
         for record in records:
             record_date = record['date']
             if isinstance(record_date, str):
-                record_date = datetime.strptime(record_date, '%Y-%m-%d %H:%M:%S%z')
+                try:
+                    # Try ISO 8601 first
+                    record_date = datetime.fromisoformat(record_date)
+                except Exception:
+                    try:
+                        # Try dateutil parser as fallback
+                        record_date = parse_date(record_date)
+                    except Exception:
+                        continue
             if start_date <= record_date <= end_date:
                 filtered_records.append({
                     'date': record['date'],
@@ -160,7 +170,13 @@ async def get_sentiment(currency: str, days: int = 30):
         for record in records:
             record_date = record['date']
             if isinstance(record_date, str):
-                record_date = datetime.strptime(record_date, '%Y-%m-%d %H:%M:%S%z')
+                try:
+                    record_date = datetime.fromisoformat(record_date)
+                except Exception:
+                    try:
+                        record_date = parse_date(record_date)
+                    except Exception:
+                        continue
             if start_date <= record_date <= end_date:
                 filtered_records.append({
                     'date': record['date'],
@@ -185,9 +201,16 @@ async def get_current_prices():
     """Get current prices for BTC and ETH"""
     try:
         # Fetch current prices
-        btc_price = await binance_fetcher.get_current_price('BTCUSDT')
-        eth_price = await binance_fetcher.get_current_price('ETHUSDT')
-        
+        btc_price = None
+        eth_price = None
+        try:
+            btc_price = await binance_fetcher.get_current_price('BTCUSDT')
+        except Exception as e:
+            btc_price = {"error": f"Binance fetch failed: {str(e)}"}
+        try:
+            eth_price = await binance_fetcher.get_current_price('ETHUSDT')
+        except Exception as e:
+            eth_price = {"error": f"Binance fetch failed: {str(e)}"}
         return {
             "timestamp": datetime.now().isoformat(),
             "BTC": btc_price,
@@ -233,8 +256,13 @@ async def get_data_status():
 
 # ===== STAGE 3: ML PREDICTION ENDPOINTS =====
 
+class FlexiblePredictionRequest(BaseModel):
+    prediction_horizon: Optional[int] = 7
+    model_type: Optional[str] = "best"
+    # Add any other fields as optional if needed
+
 @app.post("/predict/{currency}", response_model=PredictionResponse)
-async def make_prediction(currency: str, request: PredictionRequest):
+async def make_prediction(currency: str, request: FlexiblePredictionRequest):
     """
     Make a price prediction for a cryptocurrency
     
@@ -246,15 +274,13 @@ async def make_prediction(currency: str, request: PredictionRequest):
             raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
         
         # Use the prediction horizon from request, default to 7 days
-        if hasattr(request, 'prediction_horizon'):
-            prediction_horizon = request.prediction_horizon
-        else:
-            prediction_horizon = 7
+        prediction_horizon = request.prediction_horizon or 7
+        model_type = request.model_type or "best"
         
         # Make prediction using the best available model
         prediction_result = await prediction_pipeline.make_prediction(
             currency=currency.upper(),
-            model_type="best"
+            model_type=model_type
         )
         
         # Save prediction to database
