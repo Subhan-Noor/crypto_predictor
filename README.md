@@ -233,7 +233,7 @@ python scripts/production_setup.py <frontend-url> <backend-url>
 - **Performance Tracking**: Historical accuracy monitoring
 
 ### **Training and Evaluation**
-```bash
+   ```bash
 # Train models
 python scripts/train_models.py
 
