@@ -27,7 +27,6 @@ COPY backend/ml ./ml
 COPY backend/models ./models
 COPY backend/config.py ./config.py
 COPY backend/run.py ./run.py
-COPY backend/logger.py ./logger.py
 
 # If you need any other files, add COPY lines here
 
