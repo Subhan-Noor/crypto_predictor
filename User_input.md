@@ -80,7 +80,7 @@
 3. Set environment variables (see DEPLOYMENT_GUIDE.md)
 4. Deploy and note the domain
 
-### Step 2: Deploy Frontend
+### Step 2: Deploy Frontend 
 1. Go to [Vercel](https://vercel.com) and sign in with GitHub
 2. Import your GitHub repository
 3. Set `NEXT_PUBLIC_API_URL` to your backend domain
