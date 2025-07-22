@@ -33,11 +33,10 @@ allowed_origins = [
 
 # Add production origins if environment is production
 if settings.environment == "production":
-    # Add common Vercel domains - will be updated with actual domain after deployment
+    # Add your actual Vercel domain(s) here
     allowed_origins.extend([
-        "https://*.vercel.app",
-        "https://crypto-prediction-app.vercel.app",  # Update with actual domain
-        "https://crypto-prediction.vercel.app",     # Alternative domain
+        "https://cryptopredictor.vercel.app",  # <-- Replace with your actual Vercel domain if different
+        "https://cryptopredictor-production.up.railway.app"  # Allow backend self-origin for health checks
     ])
 
 app.add_middleware(
