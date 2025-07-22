@@ -10,9 +10,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import settings
 
 from .database import db_manager
-from .models.crypto_models import CryptoPrice, CryptoSentiment
-from .services.data_fetcher import CryptoPriceService
-from .services.sentiment_fetcher import SentimentService
+from .services.twitter_service import TwitterScraper
+from .services.reddit_service import RedditScraper
+from .services.binance_service import BinancePriceFetcher
 
 app = FastAPI(
     title="Crypto Price Prediction API",
@@ -30,8 +30,9 @@ app.add_middleware(
 )
 
 # Initialize services
-price_service = CryptoPriceService()
-sentiment_service = SentimentService()
+price_fetcher = BinancePriceFetcher()
+twitter_scraper = TwitterScraper()
+reddit_scraper = RedditScraper()
 
 
 @app.get("/")
@@ -65,23 +66,14 @@ async def get_crypto_prices(
     if currency.upper() not in ["BTC", "ETH"]:
         raise HTTPException(status_code=400, detail="Supported currencies: BTC, ETH")
     
-    db_client = db_manager.get_client()
-    if not db_client:
-        raise HTTPException(status_code=503, detail="Database connection unavailable")
-    
     try:
-        query = db_client.table("crypto_prices").select("*").eq("currency", currency.upper()).order("date", desc=True)
-        
-        if days:
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-            query = query.gte("date", cutoff_date)
-        
-        result = query.limit(limit).execute()
+        symbol = f"{currency.upper()}USDT"
+        historical_data = price_fetcher.get_historical_prices(symbol, limit=limit)
         
         return {
             "currency": currency.upper(),
-            "data": result.data,
-            "count": len(result.data)
+            "data": historical_data,
+            "count": len(historical_data)
         }
         
     except Exception as e:
@@ -97,44 +89,18 @@ async def get_crypto_sentiment(
     if currency.upper() not in ["BTC", "ETH"]:
         raise HTTPException(status_code=400, detail="Supported currencies: BTC, ETH")
     
-    db_client = db_manager.get_client()
-    if not db_client:
-        raise HTTPException(status_code=503, detail="Database connection unavailable")
-    
     try:
-        result = db_client.table("crypto_sentiment").select("*").eq("currency", currency.upper()).order("date", desc=True).limit(limit).execute()
+        twitter_sentiment = twitter_scraper.get_crypto_sentiment(currency)
+        reddit_sentiment = reddit_scraper.get_crypto_sentiment(currency)
         
         return {
             "currency": currency.upper(),
-            "data": result.data,
-            "count": len(result.data)
+            "twitter_sentiment": twitter_sentiment,
+            "reddit_sentiment": reddit_sentiment
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching sentiment data: {str(e)}")
-
-
-@app.get("/latest_sentiment")
-async def get_latest_sentiment():
-    """Get latest sentiment data for all supported currencies"""
-    db_client = db_manager.get_client()
-    if not db_client:
-        raise HTTPException(status_code=503, detail="Database connection unavailable")
-    
-    try:
-        result = {}
-        for currency in ["BTC", "ETH"]:
-            sentiment_data = db_client.table("crypto_sentiment").select("*").eq("currency", currency).order("date", desc=True).limit(1).execute()
-            
-            if sentiment_data.data:
-                result[currency] = sentiment_data.data[0]
-            else:
-                result[currency] = None
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching latest sentiment: {str(e)}")
 
 
 @app.get("/current_prices")
@@ -144,10 +110,8 @@ async def get_current_prices():
         prices = {}
         
         for currency in ["BTC", "ETH"]:
-            coin_mapping = {"BTC": "bitcoin", "ETH": "ethereum"}
-            coin_id = coin_mapping[currency]
-            
-            current_price = price_service.coingecko.get_current_price(coin_id)
+            symbol = f"{currency.upper()}USDT"
+            current_price = price_fetcher.get_current_price(symbol)
             if current_price:
                 prices[currency] = current_price
         

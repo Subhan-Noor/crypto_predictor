@@ -39,10 +39,9 @@ According to the guide, we have successfully completed **Stage 1** and **Stage 2
 ## ✅ **COMPLETED: Stage 2 - Data Acquisition & Storage**
 
 ### Data Sources Integration ✅
-- **CoinGecko API**: Historical OHLCV price data for BTC and ETH
-- **Fear & Greed Index**: Market sentiment indicator
-- **Twitter Sentiment**: Real-time social media sentiment analysis using HuggingFace transformers
-- **Reddit Sentiment**: Community sentiment from cryptocurrency subreddits
+- **Binance Public REST API**: Historical OHLCV price data for BTC and ETH
+- **Twitter Scraping**: Twint for real-time social media sentiment analysis
+- **Reddit Data**: Pushshift API for community sentiment
 
 ### Data Processing Services ✅
 - **Price Data Service**: Fetches and formats cryptocurrency price data
@@ -62,8 +61,6 @@ According to the guide, we have successfully completed **Stage 1** and **Stage 2
 - `GET /prices/{currency}` - Historical price data retrieval
 - `GET /sentiment/{currency}` - Historical sentiment data
 - `GET /current_prices` - Real-time price data
-- `GET /latest_sentiment` - Latest sentiment indicators
-- `GET /data_status` - Database content overview
 - `POST /predict/{currency}` - Prediction endpoint (placeholder for Stage 3)
 
 ---

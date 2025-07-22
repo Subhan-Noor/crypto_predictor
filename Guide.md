@@ -6,7 +6,7 @@ Here's a structured and detailed development plan tailored to your experience an
 
 ## Overview:
 
-This web application uses Machine Learning (ML) to predict if the price of Bitcoin (BTC) and Ethereum (ETH) will increase or decrease over the next 7 days. It leverages historical price data and sentiment analysis (Fear & Greed Index, Twitter, Reddit) to make predictions.
+This web application uses Machine Learning (ML) to predict if the price of Bitcoin (BTC) and Ethereum (ETH) will increase or decrease over the next 7 days. It leverages historical price data and sentiment analysis (Twitter, Reddit) to make predictions.
 
 ---
 
@@ -17,8 +17,8 @@ This web application uses Machine Learning (ML) to predict if the price of Bitco
 * **Database:** Supabase (PostgreSQL backend)
 * **ML Libraries:** Scikit-learn, Pandas, NumPy, TensorFlow/Keras
 * **Deployment & Hosting:** Vercel (Frontend), Render.com or Railway (Free-tier Python backend hosting)
-* **Data Sources:** CoinGecko (free crypto historical data), Twitter/Reddit APIs, Fear & Greed Index API
-* **Sentiment Analysis:** HuggingFace Transformer models
+* **Data Sources:** Binance Public REST API (crypto price data), Twint (Twitter scraping), Pushshift API (Reddit data)
+* **Sentiment Analysis:** Custom sentiment analysis logic
 * **Icons:** FontAwesome
 
 ---
@@ -40,16 +40,15 @@ This web application uses Machine Learning (ML) to predict if the price of Bitco
 
 ### 🟢 Stage 2: Data Acquisition & Storage
 
-* Write Python scripts to fetch historical price data from CoinGecko API (BTC, ETH)
+* Write Python scripts to fetch historical price data from Binance Public REST API (BTC, ETH)
 
   * Prices should include OHLCV (Open, High, Low, Close, Volume)
   * Frequency: daily data
   * Store this data regularly in Supabase
 * Fetch sentiment data:
 
-  * Crypto Fear & Greed Index: Alternative.me API (free tier)
-  * Twitter sentiment: Twitter API via Tweepy (academic/basic free tier), sentiment using HuggingFace sentiment analysis models
-  * Reddit sentiment: Reddit API via PRAW (free), sentiment using HuggingFace
+  * Twitter sentiment: Twint for scraping, custom sentiment analysis
+  * Reddit sentiment: Pushshift API, custom sentiment analysis
 
 **Database Schema:**
 
@@ -68,7 +67,6 @@ crypto_sentiment:
 - id (UUID, primary key)
 - currency (BTC/ETH, text)
 - date (timestamp)
-- fear_greed_index (int)
 - twitter_sentiment (float, avg polarity)
 - reddit_sentiment (float, avg polarity)
 ```
@@ -84,7 +82,7 @@ crypto_sentiment:
 
 * Prepare dataset combining prices & sentiment data:
 
-  * Create ML-ready dataset: historical prices, moving averages, volatility, fear-greed index, sentiment scores
+  * Create ML-ready dataset: historical prices, moving averages, volatility, sentiment scores
 * Label the data points:
 
   * Label each day as "1" (price increase over next 7 days) or "0" (price decrease/no significant change)
@@ -193,11 +191,9 @@ crypto_sentiment:
 
 ## 📌 **Suggested Free Resources:**
 
-* **Historical Crypto Prices:** CoinGecko API ([https://www.coingecko.com/api](https://www.coingecko.com/api))
-* **Crypto Fear & Greed Index:** Alternative.me API ([https://alternative.me/crypto/fear-and-greed-index/](https://alternative.me/crypto/fear-and-greed-index/))
-* **Twitter API:** Twitter Developer Platform ([https://developer.twitter.com/en](https://developer.twitter.com/en))
-* **Reddit API:** PRAW Documentation ([https://praw.readthedocs.io/](https://praw.readthedocs.io/))
-* **Sentiment Analysis:** HuggingFace Transformers ([https://huggingface.co/](https://huggingface.co/))
+* **Crypto Prices:** Binance Public REST API ([https://binance-docs.github.io/apidocs/spot/en/](https://binance-docs.github.io/apidocs/spot/en/))
+* **Twitter Scraping:** Twint ([https://github.com/twintproject/twint](https://github.com/twintproject/twint))
+* **Reddit Data:** Pushshift API ([https://pushshift.io/](https://pushshift.io/))
 * **Free Hosting:** Vercel (frontend), Render.com/Railway (backend), Supabase (database)
 
 ---
@@ -207,7 +203,7 @@ crypto_sentiment:
 * Regularly back up Supabase database.
 * Use environment variables (.env) for sensitive keys and API secrets.
 * Start with simple ML models for quick wins, gradually move towards more complex models like LSTM if performance is insufficient.
-* Consider rate limits of APIs (especially social media) and implement appropriate data caching.
+* Consider rate limits of APIs and implement appropriate data caching.
 * Initially focus only on BTC/ETH to simplify the problem and ensure feasibility.
 
 ## 📌 **Project Structure & Organization**
