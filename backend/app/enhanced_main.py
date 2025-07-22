@@ -175,15 +175,16 @@ def create_pagination_info(page: int, limit: int, total_items: int) -> Dict[str,
         "has_previous": page > 1
     }
 
-# PATCHED: Fix apply_date_filter to standardize all datetimes to UTC and offset-aware ---
+# PATCHED: Robust date handling for Supabase data
 from dateutil import parser as date_parser
 import pytz
 
 def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List[Dict]:
-    """Apply date filtering to records (patched for offset-naive/aware)"""
+    """Apply date filtering to records (robust for bad/missing dates)"""
     if not date_filter.start_date and not date_filter.end_date and not date_filter.days:
         return records
     filtered_records = []
+    skipped = 0
     current_time = datetime.now(pytz.UTC)
     def to_utc(dt):
         if dt is None:
@@ -204,6 +205,7 @@ def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List
         record_date = record.get("date")
         record_date_utc = to_utc(record_date)
         if not record_date_utc:
+            skipped += 1
             continue
         include_record = True
         if start and record_date_utc < start:
@@ -216,6 +218,8 @@ def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List
                 include_record = False
         if include_record:
             filtered_records.append(record)
+    if skipped > 0:
+        logger.warning(f"apply_date_filter: Skipped {skipped} records with bad/missing dates out of {len(records)} total.")
     return filtered_records
 
 def paginate_data(data: List[Dict], page: int, limit: int, sort_by: str = "date", sort_order: str = "desc") -> tuple:
@@ -306,6 +310,7 @@ async def enhanced_health_check():
     
     return health_data
 
+# PATCH: In get_enhanced_prices, return 404 if no valid records after filtering
 @app.get("/prices/{currency}", response_model=EnhancedPriceResponse)
 async def get_enhanced_prices(
     currency: str,
@@ -315,7 +320,6 @@ async def get_enhanced_prices(
 ):
     """Enhanced price endpoint with caching, filtering, and pagination"""
     start_time = time.time()
-    
     # Check cache first
     cache_key = f"prices:{currency}:{pagination.page}:{pagination.limit}"
     if cache_service.is_available():
@@ -328,17 +332,15 @@ async def get_enhanced_prices(
         if cached_data:
             logger.info(f"Cache hit for {currency} prices")
             return EnhancedPriceResponse(**cached_data)
-    
     # Fetch from database
     try:
-        # Get price data
         prices_data = await db_manager.get_crypto_prices(currency, limit=1000)
-        
         if not prices_data:
             raise HTTPException(status_code=404, detail=f"No price data found for {currency}")
-        
-        # Apply date filtering
         filtered_data = apply_date_filter(prices_data, date_filter)
+        if not filtered_data:
+            logger.warning(f"No valid price records for {currency} after date filtering.")
+            raise HTTPException(status_code=404, detail=f"No valid price data found for {currency} (bad/missing dates?)")
         
         # Apply price filtering
         if price_filter.min_price or price_filter.max_price or price_filter.min_volume or price_filter.max_volume:
