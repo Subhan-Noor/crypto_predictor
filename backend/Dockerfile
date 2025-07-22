@@ -18,16 +18,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Only copy necessary app files and directories
-COPY app ./app
-COPY ml ./ml
-COPY models ./models
-COPY config.py ./config.py
-COPY run.py ./run.py
-COPY logger.py ./logger.py
+COPY backend/app ./app
+COPY backend/ml ./ml
+COPY backend/models ./models
+COPY backend/config.py ./config.py
+COPY backend/run.py ./run.py
+COPY backend/logger.py ./logger.py
 
 # If you need any other files, add COPY lines here
 
