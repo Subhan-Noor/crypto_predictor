@@ -16,7 +16,7 @@ from .services.binance_service import BinancePriceFetcher
 from .models.crypto_models import PredictionRequest, PredictionResponse, DataStatusResponse, HealthResponse
 
 # Import ML components for Stage 3
-from ..ml.prediction_pipeline import CryptoPredictionPipeline
+from ml.prediction_pipeline import CryptoPredictionPipeline
 
 app = FastAPI(
     title="Crypto Price Prediction API",
