@@ -173,7 +173,7 @@ export default function StatusPage() {
           <ul className="list-disc list-inside space-y-1 ml-4">
             <li>Backend data endpoints may need sample data for full testing</li>
             <li>Some API endpoints return errors (likely due to missing data)</li>
-            <li>Charts will show "No data available" until backend has price data</li>
+            <li>Charts will show &ldquo;No data available&rdquo; until backend has price data</li>
           </ul>
           <p className="mt-4"><strong>Ready for Stage 6:</strong> Integrations & Automation</p>
         </div>
