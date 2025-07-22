@@ -41,7 +41,7 @@ class DatabaseManager:
         """Check if database connection is available"""
         return self.client is not None
     
-    def test_connection(self) -> bool:
+    async def test_connection(self) -> bool:
         """Test database connection by making a simple query"""
         try:
             if not self.client:
@@ -164,6 +164,44 @@ class DatabaseManager:
             
         except Exception as e:
             logger.error(f"Error fetching records from {table}: {str(e)}")
+            return []
+
+    async def get_crypto_prices(self, currency: str, limit: int = 1000):
+        """Get crypto price data for a currency"""
+        try:
+            if not self.client:
+                return []
+            
+            result = self.client.table("crypto_prices")\
+                .select("*")\
+                .eq("currency", currency.upper())\
+                .order("date", desc=True)\
+                .limit(limit)\
+                .execute()
+            
+            return result.data
+            
+        except Exception as e:
+            logger.error(f"Error fetching crypto prices for {currency}: {str(e)}")
+            return []
+
+    async def get_crypto_sentiment(self, currency: str, limit: int = 1000):
+        """Get crypto sentiment data for a currency"""
+        try:
+            if not self.client:
+                return []
+            
+            result = self.client.table("crypto_sentiment")\
+                .select("*")\
+                .eq("currency", currency.upper())\
+                .order("date", desc=True)\
+                .limit(limit)\
+                .execute()
+            
+            return result.data
+            
+        except Exception as e:
+            logger.error(f"Error fetching crypto sentiment for {currency}: {str(e)}")
             return []
 
 # Global database manager instance

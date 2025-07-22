@@ -17,7 +17,7 @@ This web application uses Machine Learning (ML) to predict if the price of Bitco
 * **Database:** Supabase (PostgreSQL backend)
 * **ML Libraries:** Scikit-learn, Pandas, NumPy, TensorFlow/Keras
 * **Deployment & Hosting:** Vercel (Frontend), Render.com or Railway (Free-tier Python backend hosting)
-* **Data Sources:** Binance Public REST API (crypto price data), Twint (Twitter scraping), Pushshift API (Reddit data)
+* **Data Sources:** Binance Public REST API (crypto price data), snscrape (Twitter scraping), Pushshift API (Reddit data)
 * **Sentiment Analysis:** Custom sentiment analysis logic
 * **Icons:** FontAwesome
 
@@ -47,7 +47,7 @@ This web application uses Machine Learning (ML) to predict if the price of Bitco
   * Store this data regularly in Supabase
 * Fetch sentiment data:
 
-  * Twitter sentiment: Twint for scraping, custom sentiment analysis
+  * Twitter sentiment: **snscrape** for scraping, custom sentiment analysis
   * Reddit sentiment: Pushshift API, custom sentiment analysis
 
 **Database Schema:**
@@ -192,7 +192,7 @@ crypto_sentiment:
 ## 📌 **Suggested Free Resources:**
 
 * **Crypto Prices:** Binance Public REST API ([https://binance-docs.github.io/apidocs/spot/en/](https://binance-docs.github.io/apidocs/spot/en/))
-* **Twitter Scraping:** Twint ([https://github.com/twintproject/twint](https://github.com/twintproject/twint))
+* **Twitter Scraping:** snscrape ([https://github.com/JustAnotherArchivist/snscrape](https://github.com/JustAnotherArchivist/snscrape))
 * **Reddit Data:** Pushshift API ([https://pushshift.io/](https://pushshift.io/))
 * **Free Hosting:** Vercel (frontend), Render.com/Railway (backend), Supabase (database)
 
@@ -200,6 +200,7 @@ crypto_sentiment:
 
 ## 📌 **Implementation Notes & Tips:**
 
+* For Twitter data, use `snscrape` instead of Twint. Install with `pip install snscrape`.
 * Regularly back up Supabase database.
 * Use environment variables (.env) for sensitive keys and API secrets.
 * Start with simple ML models for quick wins, gradually move towards more complex models like LSTM if performance is insufficient.

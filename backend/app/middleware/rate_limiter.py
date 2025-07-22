@@ -6,6 +6,7 @@ This module provides rate limiting functionality to:
 - Ensure fair usage
 - Protect against DDoS attacks
 - Provide different limits for different endpoints
+- Graceful fallback when Redis is unavailable
 """
 
 import time
@@ -32,6 +33,7 @@ class RateLimiter:
     def __init__(self):
         """Initialize rate limiter"""
         self.redis_client = None
+        self.enabled = settings.redis_enabled
         self.connect()
         
         # Rate limit configurations
@@ -45,6 +47,10 @@ class RateLimiter:
     
     def connect(self):
         """Connect to Redis"""
+        if not self.enabled:
+            logger.info("Rate limiting disabled by configuration")
+            return
+            
         try:
             self.redis_client = redis.from_url(
                 settings.redis_url,
@@ -57,10 +63,13 @@ class RateLimiter:
             logger.info("Rate limiter connected to Redis")
         except Exception as e:
             logger.warning(f"Rate limiter could not connect to Redis: {e}")
+            logger.info("Rate limiting disabled - API will run without rate limiting")
             self.redis_client = None
     
     def is_available(self) -> bool:
         """Check if Redis is available"""
+        if not self.enabled:
+            return False
         if not self.redis_client:
             return False
         try:
@@ -115,7 +124,7 @@ class RateLimiter:
         """
         if not self.is_available():
             # If Redis is not available, allow the request but log warning
-            logger.warning("Rate limiter unavailable, allowing request")
+            logger.debug("Rate limiter unavailable, allowing request")
             return True, {"status": "rate_limiter_unavailable"}
         
         client_id = self._get_client_id(request)

@@ -5,6 +5,7 @@ This module provides caching functionality to improve API performance by:
 - Caching frequently accessed data (prices, predictions, sentiment)
 - Reducing database load
 - Implementing cache invalidation strategies
+- Graceful fallback when Redis is unavailable
 """
 
 import redis
@@ -24,16 +25,21 @@ logger = logging.getLogger(__name__)
 
 
 class CacheService:
-    """Redis-based caching service"""
+    """Redis-based caching service with graceful fallback"""
     
     def __init__(self):
         """Initialize Redis connection"""
         self.redis_client = None
         self.default_ttl = 300  # 5 minutes default
+        self.enabled = settings.redis_enabled
         self.connect()
     
     def connect(self):
         """Connect to Redis"""
+        if not self.enabled:
+            logger.info("Redis caching disabled by configuration")
+            return
+            
         try:
             self.redis_client = redis.from_url(
                 settings.redis_url,
@@ -47,10 +53,13 @@ class CacheService:
             logger.info("Successfully connected to Redis")
         except Exception as e:
             logger.warning(f"Could not connect to Redis: {e}")
+            logger.info("API will run without caching (performance may be reduced)")
             self.redis_client = None
     
     def is_available(self) -> bool:
         """Check if Redis is available"""
+        if not self.enabled:
+            return False
         if not self.redis_client:
             return False
         try:
@@ -201,6 +210,8 @@ class CacheService:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
+        if not self.enabled:
+            return {"status": "disabled"}
         if not self.is_available():
             return {"status": "disconnected"}
         

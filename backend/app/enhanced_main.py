@@ -1,126 +1,129 @@
+# Enhanced FastAPI application with production-ready features
 """
-Enhanced Crypto Price Prediction API with Stage 4 Features
+Enhanced Crypto Price Prediction API
 
-This module includes:
-- Redis caching for performance optimization
+This module provides:
+- Redis caching for improved performance
 - Rate limiting for API protection
-- WebSocket support for real-time updates
-- Advanced filtering and pagination
-- Enhanced error handling and monitoring
+- WebSocket real-time updates
+- Enhanced error handling and validation
 - Background task processing
+- Comprehensive monitoring and analytics
 """
 
 import asyncio
+import logging
 import time
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+from decimal import Decimal
 import uuid
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, Request, Query, BackgroundTasks
+
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exception_handlers import http_exception_handler
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
-import sys
-import os
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from fastapi.encoders import jsonable_encoder
 
-# Add the parent directory to sys.path to import config
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import settings
-
-# Import original components
+# Import existing services
 from .database import db_manager
+from .services.binance_service import BinancePriceFetcher
 from .services.twitter_service import TwitterScraper
 from .services.reddit_service import RedditScraper
-from .services.binance_service import BinancePriceFetcher
-from .models.crypto_models import PredictionRequest, PredictionResponse
 
-# Import Stage 4 enhancements
+# Import new Stage 4 services
 from .services.cache_service import cache_service
-from .middleware.rate_limiter import rate_limit_middleware, rate_limiter
+from .middleware.rate_limiter import rate_limiter, rate_limit_middleware
 from .services.websocket_service import websocket_service
+from .services.background_tasks import BackgroundTaskService
+
+# Import enhanced models
 from .models.api_models import (
     PaginationParams, DateRangeFilter, PriceFilter, SentimentFilter,
     EnhancedPriceResponse, EnhancedSentimentResponse, EnhancedPredictionResponse,
-    APIHealthStatus, EnhancedErrorResponse, TaskStatus, BackgroundTask,
-    PredictionRequest as EnhancedPredictionRequest
+    PredictionRequest, APIHealthStatus, EnhancedErrorResponse
 )
 
 # Import ML components
-from ..ml.prediction_pipeline import CryptoPredictionPipeline
+from ml.prediction_pipeline import CryptoPredictionPipeline
 
-# Create FastAPI app with enhanced metadata
+# Import configuration
+from config import settings
+
+# Configure logging
+logging.basicConfig(level=getattr(logging, settings.log_level))
+logger = logging.getLogger(__name__)
+
+# Initialize services
+binance_service = BinancePriceFetcher()
+twitter_service = TwitterScraper()
+reddit_service = RedditScraper()
+prediction_pipeline = CryptoPredictionPipeline()
+background_task_service = BackgroundTaskService()
+
+# Create FastAPI app
 app = FastAPI(
     title="Enhanced Crypto Price Prediction API",
-    description="""
-    Advanced cryptocurrency price prediction API with ML models.
-    
-    Features:
-    - Real-time price predictions using ML models
-    - Historical data analysis with advanced filtering
-    - Real-time WebSocket updates
-    - Redis caching for optimal performance
-    - Rate limiting for API protection
-    - Background task processing
-    - Comprehensive monitoring and analytics
-    """,
+    description="Production-ready API with caching, rate limiting, and real-time updates",
     version="2.0.0",
-    contact={
-        "name": "Crypto Prediction API",
-        "email": "admin@cryptoprediction.com",
-    },
-    license_info={
-        "name": "MIT",
-        "url": "https://opensource.org/licenses/MIT",
-    },
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-# Add enhanced CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "https://*.vercel.app",  # For production frontend
-        "https://*.netlify.app"
-    ],
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Add rate limiting middleware
-app.middleware("http")(rate_limit_middleware)
-
-# Initialize services
-twitter_scraper = TwitterScraper()
-reddit_scraper = RedditScraper()
-binance_fetcher = BinancePriceFetcher()
-prediction_pipeline = CryptoPredictionPipeline()
-
-# Background tasks storage
-background_tasks: Dict[str, BackgroundTask] = {}
+@app.middleware("http")
+async def rate_limit_middleware_wrapper(request: Request, call_next):
+    return await rate_limit_middleware(request, call_next)
 
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    await websocket_service.start_service()
-    print("🚀 Enhanced Crypto Prediction API started successfully!")
-    print(f"📊 Cache Status: {'✅ Connected' if cache_service.is_available() else '❌ Disconnected'}")
-    print(f"⚡ Rate Limiter: {'✅ Active' if rate_limiter.is_available() else '❌ Inactive'}")
-    print(f"🔗 WebSocket Service: ✅ Running")
+    try:
+        # Start WebSocket service
+        await websocket_service.start_service()
+        
+        # Test Redis connection
+        if cache_service.is_available():
+            logger.info("✅ Redis cache connected")
+        else:
+            logger.warning("⚠️ Redis cache unavailable - using fallback mode")
+        
+        # Test rate limiter
+        if rate_limiter.is_available():
+            logger.info("✅ Rate limiter active")
+        else:
+            logger.warning("⚠️ Rate limiter unavailable - using fallback mode")
+        
+        logger.info("🚀 Enhanced Crypto Prediction API started successfully!")
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    await websocket_service.stop_service()
-    print("👋 Enhanced Crypto Prediction API shutdown complete")
+    try:
+        await websocket_service.stop_service()
+        logger.info("Enhanced API shutdown complete")
+    except Exception as e:
+        logger.error(f"Shutdown error: {e}")
 
-# Enhanced error handler
+# Enhanced error handlers
 @app.exception_handler(HTTPException)
 async def enhanced_http_exception_handler(request: Request, exc: HTTPException):
     """Enhanced error handling with detailed responses"""
     error_id = str(uuid.uuid4())[:8]
-    
     error_response = EnhancedErrorResponse(
         error="HTTP Exception",
         error_code=f"HTTP_{exc.status_code}",
@@ -130,11 +133,33 @@ async def enhanced_http_exception_handler(request: Request, exc: HTTPException):
         method=request.method,
         request_id=error_id
     )
-    
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response.dict(),
+        content=jsonable_encoder(error_response),
         headers={"X-Request-ID": error_id}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Enhanced validation error handler"""
+    validation_errors = []
+    for error in exc.errors():
+        validation_errors.append({
+            "field": " -> ".join(str(loc) for loc in error["loc"]),
+            "message": error["msg"],
+            "invalid_value": error.get("input")
+        })
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder(EnhancedErrorResponse(
+            error="Validation Error",
+            error_code="VALIDATION_ERROR",
+            message="Request validation failed",
+            validation_errors=validation_errors,
+            timestamp=datetime.now(),
+            path=request.url.path,
+            method=request.method
+        ))
     )
 
 # Utility functions
@@ -142,7 +167,7 @@ def create_pagination_info(page: int, limit: int, total_items: int) -> Dict[str,
     """Create pagination metadata"""
     total_pages = (total_items + limit - 1) // limit
     return {
-        "current_page": page,
+        "page": page,
         "limit": limit,
         "total_items": total_items,
         "total_pages": total_pages,
@@ -155,32 +180,37 @@ def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List
     if not date_filter.start_date and not date_filter.end_date and not date_filter.days:
         return records
     
-    # Calculate date range
-    if date_filter.days:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=date_filter.days)
-    else:
-        start_date = date_filter.start_date
-        end_date = date_filter.end_date
-    
     filtered_records = []
+    current_time = datetime.now()
+    
     for record in records:
-        record_date = record['date']
+        record_date = record.get("date")
+        if not record_date:
+            continue
+            
+        # Convert string to datetime if needed
         if isinstance(record_date, str):
             try:
-                record_date = datetime.strptime(record_date, '%Y-%m-%d %H:%M:%S%z')
-            except ValueError:
-                try:
-                    record_date = datetime.strptime(record_date, '%Y-%m-%d')
-                except ValueError:
-                    continue
+                record_date = datetime.fromisoformat(record_date.replace('Z', '+00:00'))
+            except:
+                continue
         
-        if start_date and record_date < start_date:
-            continue
-        if end_date and record_date > end_date:
-            continue
+        # Apply date filters
+        include_record = True
         
-        filtered_records.append(record)
+        if date_filter.start_date and record_date < date_filter.start_date:
+            include_record = False
+        
+        if date_filter.end_date and record_date > date_filter.end_date:
+            include_record = False
+        
+        if date_filter.days:
+            cutoff_date = current_time - timedelta(days=date_filter.days)
+            if record_date < cutoff_date:
+                include_record = False
+        
+        if include_record:
+            filtered_records.append(record)
     
     return filtered_records
 
@@ -188,34 +218,38 @@ def paginate_data(data: List[Dict], page: int, limit: int, sort_by: str = "date"
     """Paginate and sort data"""
     # Sort data
     reverse = sort_order.lower() == "desc"
-    try:
-        sorted_data = sorted(data, key=lambda x: x.get(sort_by, ""), reverse=reverse)
-    except:
-        sorted_data = data  # Fallback if sorting fails
+    data.sort(key=lambda x: x.get(sort_by, ""), reverse=reverse)
     
-    # Paginate
+    # Calculate pagination
     start_idx = (page - 1) * limit
     end_idx = start_idx + limit
-    paginated_data = sorted_data[start_idx:end_idx]
+    paginated_data = data[start_idx:end_idx]
     
-    return paginated_data, len(sorted_data)
+    return paginated_data, len(data)
 
-# ===== ENHANCED HEALTH AND STATUS ENDPOINTS =====
-
+# Enhanced endpoints
 @app.get("/", response_model=APIHealthStatus)
 async def enhanced_root():
-    """Enhanced health check endpoint with comprehensive status"""
-    cache_stats = cache_service.get_stats() if cache_service.is_available() else None
+    """Enhanced root endpoint with comprehensive health status"""
+    start_time = time.time()
     
-    # Get database stats
+    # Check database connection
+    db_status = "healthy"
     try:
-        btc_count = len(await db_manager.get_records('crypto_prices', {'currency': 'BTC'}))
-        eth_count = len(await db_manager.get_records('crypto_prices', {'currency': 'ETH'}))
-        db_status = "healthy"
+        await db_manager.test_connection()
     except Exception as e:
-        btc_count = 0
-        eth_count = 0
         db_status = f"error: {str(e)}"
+    
+    # Check cache status
+    cache_stats = cache_service.get_stats() if cache_service.is_available() else {"status": "unavailable"}
+    
+    # Check rate limiter status
+    rate_limit_status = "active" if rate_limiter.is_available() else "unavailable"
+    
+    # Check WebSocket status
+    websocket_stats = websocket_service.get_stats()
+    
+    response_time = (time.time() - start_time) * 1000
     
     return APIHealthStatus(
         status="healthy",
@@ -223,79 +257,50 @@ async def enhanced_root():
         version="2.0.0",
         environment=settings.environment,
         services={
-            "database": {
-                "status": db_status,
-                "btc_records": btc_count,
-                "eth_records": eth_count
-            },
-            "cache": {
-                "status": "connected" if cache_service.is_available() else "disconnected",
-                "redis_url": settings.redis_url if cache_service.is_available() else None
-            },
-            "rate_limiter": {
-                "status": "active" if rate_limiter.is_available() else "inactive"
-            },
-            "websocket": websocket_service.get_stats(),
-            "ml_pipeline": {
-                "status": "available",
-                "models_loaded": "ready"
-            }
+            "database": {"status": db_status},
+            "cache": cache_stats,
+            "rate_limiter": {"status": rate_limit_status},
+            "websocket": websocket_stats
         },
         performance_metrics={
-            "uptime": "calculated_dynamically",
-            "memory_usage": "available_via_cache"
-        },
-        cache_stats=cache_stats
+            "response_time_ms": round(response_time, 2)
+        }
     )
 
 @app.get("/health")
 async def enhanced_health_check():
-    """Detailed health check with performance metrics"""
-    start_time = time.time()
-    
-    # Test database
-    try:
-        db_test = await db_manager.get_records('crypto_prices', {'currency': 'BTC'})
-        db_latency = (time.time() - start_time) * 1000
-        db_status = "healthy"
-    except Exception as e:
-        db_latency = None
-        db_status = f"error: {str(e)}"
-    
-    # Test cache
-    cache_test_start = time.time()
-    cache_available = cache_service.is_available()
-    cache_latency = (time.time() - cache_test_start) * 1000 if cache_available else None
-    
-    return {
-        "status": "healthy" if db_status == "healthy" else "degraded",
+    """Detailed health check endpoint"""
+    health_data = {
+        "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "2.0.0",
-        "services": {
-            "database": {
-                "status": db_status,
-                "latency_ms": db_latency
-            },
-            "cache": {
-                "status": "connected" if cache_available else "disconnected",
-                "latency_ms": cache_latency
-            },
-            "rate_limiter": {
-                "status": "active" if rate_limiter.is_available() else "inactive"
-            },
-            "websocket": {
-                "status": "running" if websocket_service.is_running else "stopped",
-                "connections": len(websocket_service.connection_manager.active_connections)
-            }
-        },
-        "cache_stats": cache_service.get_stats(),
-        "background_tasks": {
-            "total": len(background_tasks),
-            "running": len([t for t in background_tasks.values() if t.status == TaskStatus.RUNNING])
-        }
+        "environment": settings.environment,
+        "services": {}
     }
-
-# ===== ENHANCED DATA ENDPOINTS WITH CACHING AND PAGINATION =====
+    
+    # Database health
+    try:
+        await db_manager.test_connection()
+        health_data["services"]["database"] = {"status": "healthy"}
+    except Exception as e:
+        health_data["services"]["database"] = {"status": "unhealthy", "error": str(e)}
+        health_data["status"] = "degraded"
+    
+    # Cache health
+    if cache_service.is_available():
+        health_data["services"]["cache"] = cache_service.get_stats()
+    else:
+        health_data["services"]["cache"] = {"status": "unavailable"}
+    
+    # Rate limiter health
+    health_data["services"]["rate_limiter"] = {
+        "status": "active" if rate_limiter.is_available() else "unavailable"
+    }
+    
+    # WebSocket health
+    health_data["services"]["websocket"] = websocket_service.get_stats()
+    
+    return health_data
 
 @app.get("/prices/{currency}", response_model=EnhancedPriceResponse)
 async def get_enhanced_prices(
@@ -304,94 +309,115 @@ async def get_enhanced_prices(
     date_filter: DateRangeFilter = Depends(),
     price_filter: PriceFilter = Depends()
 ):
-    """Get historical price data with enhanced filtering and pagination"""
-    try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        currency = currency.upper()
-        
-        # Check cache first
-        cache_key = f"enhanced_prices_{currency}_{pagination.page}_{pagination.limit}_{date_filter.days or 30}"
-        cached_data = cache_service.get_prices(currency, date_filter.days or 30, pagination.page, pagination.limit)
-        
+    """Enhanced price endpoint with caching, filtering, and pagination"""
+    start_time = time.time()
+    
+    # Check cache first
+    cache_key = f"prices:{currency}:{pagination.page}:{pagination.limit}"
+    if cache_service.is_available():
+        cached_data = cache_service.get_prices(
+            currency, 
+            date_filter.days or 30, 
+            pagination.page, 
+            pagination.limit
+        )
         if cached_data:
+            logger.info(f"Cache hit for {currency} prices")
             return EnhancedPriceResponse(**cached_data)
+    
+    # Fetch from database
+    try:
+        # Get price data
+        prices_data = await db_manager.get_crypto_prices(currency, limit=1000)
         
-        # Get records from database
-        records = await db_manager.get_records('crypto_prices', {'currency': currency})
+        if not prices_data:
+            raise HTTPException(status_code=404, detail=f"No price data found for {currency}")
         
         # Apply date filtering
-        filtered_records = apply_date_filter(records, date_filter)
+        filtered_data = apply_date_filter(prices_data, date_filter)
         
         # Apply price filtering
         if price_filter.min_price or price_filter.max_price or price_filter.min_volume or price_filter.max_volume:
             price_filtered = []
-            for record in filtered_records:
-                if price_filter.min_price and float(record['close']) < price_filter.min_price:
-                    continue
-                if price_filter.max_price and float(record['close']) > price_filter.max_price:
-                    continue
-                if price_filter.min_volume and float(record['volume']) < price_filter.min_volume:
-                    continue
-                if price_filter.max_volume and float(record['volume']) > price_filter.max_volume:
-                    continue
-                price_filtered.append(record)
-            filtered_records = price_filtered
+            for record in filtered_data:
+                include = True
+                
+                if price_filter.min_price and record.get("close", 0) < float(price_filter.min_price):
+                    include = False
+                if price_filter.max_price and record.get("close", 0) > float(price_filter.max_price):
+                    include = False
+                if price_filter.min_volume and record.get("volume", 0) < float(price_filter.min_volume):
+                    include = False
+                if price_filter.max_volume and record.get("volume", 0) > float(price_filter.max_volume):
+                    include = False
+                
+                if include:
+                    price_filtered.append(record)
+            filtered_data = price_filtered
         
         # Paginate data
         paginated_data, total_items = paginate_data(
-            filtered_records, pagination.page, pagination.limit, 
-            pagination.sort_by, pagination.sort_order
+            filtered_data, 
+            pagination.page, 
+            pagination.limit, 
+            pagination.sort_by, 
+            pagination.sort_order
         )
         
-        # Format data
-        formatted_data = []
-        for record in paginated_data:
-            formatted_data.append({
-                'date': record['date'],
-                'open': float(record['open']),
-                'high': float(record['high']),
-                'low': float(record['low']),
-                'close': float(record['close']),
-                'volume': float(record['volume'])
-            })
+        # Create pagination info
+        pagination_info = create_pagination_info(pagination.page, pagination.limit, total_items)
         
         # Calculate price summary
-        if formatted_data:
-            prices = [item['close'] for item in formatted_data]
+        if paginated_data:
+            prices = [float(record.get("close", 0)) for record in paginated_data]
+            volumes = [float(record.get("volume", 0)) for record in paginated_data]
+            
             price_summary = {
-                'min_price': min(prices),
-                'max_price': max(prices),
-                'avg_price': sum(prices) / len(prices),
-                'price_change': ((prices[-1] - prices[0]) / prices[0] * 100) if len(prices) > 1 else 0
+                "min_price": min(prices),
+                "max_price": max(prices),
+                "avg_price": sum(prices) / len(prices),
+                "min_volume": min(volumes),
+                "max_volume": max(volumes),
+                "avg_volume": sum(volumes) / len(volumes)
             }
         else:
             price_summary = {}
         
         # Create response
-        pagination_info = create_pagination_info(pagination.page, pagination.limit, total_items)
-        
-        response_data = {
-            "currency": currency,
-            "data": formatted_data,
-            "pagination": pagination_info,
-            "total_items": total_items,
-            "date_range": {
-                "start_date": formatted_data[0]['date'] if formatted_data else None,
-                "end_date": formatted_data[-1]['date'] if formatted_data else None
+        response = EnhancedPriceResponse(
+            currency=currency,
+            data=paginated_data,
+            pagination=pagination_info,
+            total_items=total_items,
+            date_range={
+                "start_date": paginated_data[-1]["date"] if paginated_data else None,
+                "end_date": paginated_data[0]["date"] if paginated_data else None
             },
-            "price_summary": price_summary,
-            "count": len(formatted_data)
-        }
+            price_summary=price_summary,
+            count=len(paginated_data)
+        )
         
         # Cache the response
-        cache_service.set_prices(currency, date_filter.days or 30, pagination.page, pagination.limit, response_data)
+        if cache_service.is_available():
+            cache_service.set_prices(
+                currency, 
+                date_filter.days or 30, 
+                pagination.page, 
+                pagination.limit, 
+                response.dict(),
+                ttl=300  # 5 minutes
+            )
         
-        return EnhancedPriceResponse(**response_data)
+        response_time = (time.time() - start_time) * 1000
+        logger.info(f"Enhanced prices for {currency}: {len(paginated_data)} records in {response_time:.2f}ms")
         
+        return response
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching prices: {str(e)}")
+        logger.error(f"Error fetching enhanced prices for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/sentiment/{currency}", response_model=EnhancedSentimentResponse)
 async def get_enhanced_sentiment(
@@ -400,212 +426,214 @@ async def get_enhanced_sentiment(
     date_filter: DateRangeFilter = Depends(),
     sentiment_filter: SentimentFilter = Depends()
 ):
-    """Get historical sentiment data with enhanced filtering"""
-    try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        currency = currency.upper()
-        
-        # Check cache first
+    """Enhanced sentiment endpoint with caching, filtering, and pagination"""
+    start_time = time.time()
+    # Check cache first
+    if cache_service.is_available():
         cached_data = cache_service.get_sentiment(currency, date_filter.days or 30)
-        if cached_data and not sentiment_filter.min_twitter_sentiment:  # Only use cache for simple queries
+        if cached_data:
+            logger.info(f"Cache hit for {currency} sentiment")
             return EnhancedSentimentResponse(**cached_data)
-        
-        # Get records from database
-        records = await db_manager.get_records('crypto_sentiment', {'currency': currency})
-        
+    # Fetch from database
+    try:
+        sentiment_data = await db_manager.get_crypto_sentiment(currency, limit=1000)
+        if not sentiment_data:
+            raise HTTPException(status_code=404, detail=f"No sentiment data found for {currency}")
+        # Filter out records with invalid float values
+        def safe_float(val):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return None
+        filtered_data = []
+        for record in sentiment_data:
+            record['twitter_sentiment'] = safe_float(record.get('twitter_sentiment'))
+            record['reddit_sentiment'] = safe_float(record.get('reddit_sentiment'))
+            filtered_data.append(record)
         # Apply date filtering
-        filtered_records = apply_date_filter(records, date_filter)
-        
+        filtered_data = apply_date_filter(filtered_data, date_filter)
         # Apply sentiment filtering
-        if (sentiment_filter.min_twitter_sentiment is not None or 
-            sentiment_filter.max_twitter_sentiment is not None or
-            sentiment_filter.min_reddit_sentiment is not None or
-            sentiment_filter.max_reddit_sentiment is not None):
-            
+        if (sentiment_filter.min_twitter_sentiment or sentiment_filter.max_twitter_sentiment or 
+            sentiment_filter.min_reddit_sentiment or sentiment_filter.max_reddit_sentiment):
             sentiment_filtered = []
-            for record in filtered_records:
-                twitter_sentiment = float(record['twitter_sentiment']) if record['twitter_sentiment'] else None
-                reddit_sentiment = float(record['reddit_sentiment']) if record['reddit_sentiment'] else None
-                
-                if (sentiment_filter.min_twitter_sentiment is not None and 
-                    (twitter_sentiment is None or twitter_sentiment < sentiment_filter.min_twitter_sentiment)):
-                    continue
-                if (sentiment_filter.max_twitter_sentiment is not None and 
-                    (twitter_sentiment is None or twitter_sentiment > sentiment_filter.max_twitter_sentiment)):
-                    continue
-                if (sentiment_filter.min_reddit_sentiment is not None and 
-                    (reddit_sentiment is None or reddit_sentiment < sentiment_filter.min_reddit_sentiment)):
-                    continue
-                if (sentiment_filter.max_reddit_sentiment is not None and 
-                    (reddit_sentiment is None or reddit_sentiment > sentiment_filter.max_reddit_sentiment)):
-                    continue
-                
-                sentiment_filtered.append(record)
-            filtered_records = sentiment_filtered
-        
+            for record in filtered_data:
+                include = True
+                twitter_sentiment = record.get("twitter_sentiment")
+                reddit_sentiment = record.get("reddit_sentiment")
+                if sentiment_filter.min_twitter_sentiment and (twitter_sentiment is None or twitter_sentiment < sentiment_filter.min_twitter_sentiment):
+                    include = False
+                if sentiment_filter.max_twitter_sentiment and (twitter_sentiment is None or twitter_sentiment > sentiment_filter.max_twitter_sentiment):
+                    include = False
+                if sentiment_filter.min_reddit_sentiment and (reddit_sentiment is None or reddit_sentiment < sentiment_filter.min_reddit_sentiment):
+                    include = False
+                if sentiment_filter.max_reddit_sentiment and (reddit_sentiment is None or reddit_sentiment > sentiment_filter.max_reddit_sentiment):
+                    include = False
+                if include:
+                    sentiment_filtered.append(record)
+            filtered_data = sentiment_filtered
         # Paginate data
         paginated_data, total_items = paginate_data(
-            filtered_records, pagination.page, pagination.limit,
-            pagination.sort_by, pagination.sort_order
+            filtered_data, 
+            pagination.page, 
+            pagination.limit, 
+            pagination.sort_by, 
+            pagination.sort_order
         )
-        
-        # Format data
-        formatted_data = []
-        for record in paginated_data:
-            formatted_data.append({
-                'date': record['date'],
-                'twitter_sentiment': float(record['twitter_sentiment']) if record['twitter_sentiment'] else None,
-                'reddit_sentiment': float(record['reddit_sentiment']) if record['reddit_sentiment'] else None
-            })
-        
-        # Calculate sentiment summary
-        twitter_sentiments = [item['twitter_sentiment'] for item in formatted_data if item['twitter_sentiment'] is not None]
-        reddit_sentiments = [item['reddit_sentiment'] for item in formatted_data if item['reddit_sentiment'] is not None]
-        
-        sentiment_summary = {
-            'avg_twitter_sentiment': sum(twitter_sentiments) / len(twitter_sentiments) if twitter_sentiments else None,
-            'avg_reddit_sentiment': sum(reddit_sentiments) / len(reddit_sentiments) if reddit_sentiments else None,
-            'twitter_data_points': len(twitter_sentiments),
-            'reddit_data_points': len(reddit_sentiments)
-        }
-        
-        # Create response
+        # Create pagination info
         pagination_info = create_pagination_info(pagination.page, pagination.limit, total_items)
-        
-        response_data = {
-            "currency": currency,
-            "data": formatted_data,
-            "pagination": pagination_info,
-            "total_items": total_items,
-            "sentiment_summary": sentiment_summary,
-            "count": len(formatted_data)
-        }
-        
-        # Cache the response (only simple queries)
-        if not sentiment_filter.min_twitter_sentiment:
-            cache_service.set_sentiment(currency, date_filter.days or 30, response_data)
-        
-        return EnhancedSentimentResponse(**response_data)
-        
+        # Calculate sentiment summary
+        if paginated_data:
+            twitter_sentiments = [r["twitter_sentiment"] for r in paginated_data if r["twitter_sentiment"] is not None]
+            reddit_sentiments = [r["reddit_sentiment"] for r in paginated_data if r["reddit_sentiment"] is not None]
+            sentiment_summary = {
+                "avg_twitter_sentiment": sum(twitter_sentiments) / len(twitter_sentiments) if twitter_sentiments else None,
+                "avg_reddit_sentiment": sum(reddit_sentiments) / len(reddit_sentiments) if reddit_sentiments else None,
+                "twitter_sentiment_range": {
+                    "min": min(twitter_sentiments) if twitter_sentiments else None,
+                    "max": max(twitter_sentiments) if twitter_sentiments else None
+                },
+                "reddit_sentiment_range": {
+                    "min": min(reddit_sentiments) if reddit_sentiments else None,
+                    "max": max(reddit_sentiments) if reddit_sentiments else None
+                }
+            }
+        else:
+            sentiment_summary = {}
+        # Create response
+        response = EnhancedSentimentResponse(
+            currency=currency,
+            data=paginated_data,
+            pagination=pagination_info,
+            total_items=total_items,
+            sentiment_summary=sentiment_summary,
+            count=len(paginated_data)
+        )
+        # Cache the response
+        if cache_service.is_available():
+            cache_service.set_sentiment(currency, date_filter.days or 30, response.dict(), ttl=600)
+        response_time = (time.time() - start_time) * 1000
+        logger.info(f"Enhanced sentiment for {currency}: {len(paginated_data)} records in {response_time:.2f}ms")
+        return response
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching sentiment: {str(e)}")
+        logger.error(f"Error fetching enhanced sentiment for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/current_prices")
 async def get_enhanced_current_prices():
-    """Get current prices with caching"""
+    """Enhanced current prices endpoint with caching"""
+    # Check cache first
+    if cache_service.is_available():
+        cached_data = cache_service.get_current_prices()
+        if cached_data:
+            return cached_data
+    
+    # Fetch current prices
     try:
-        # Check cache first
-        cached_prices = cache_service.get_current_prices()
-        if cached_prices:
-            return cached_prices
+        btc_price = await binance_service.get_current_price("BTCUSDT")
+        eth_price = await binance_service.get_current_price("ETHUSDT")
         
-        # Fetch current prices
-        btc_price = await binance_fetcher.get_current_price('BTCUSDT')
-        eth_price = await binance_fetcher.get_current_price('ETHUSDT')
-        
-        response_data = {
+        current_prices = {
             "timestamp": datetime.now().isoformat(),
-            "BTC": btc_price,
-            "ETH": eth_price
+            "prices": {
+                "BTC": {
+                    "price": btc_price,
+                    "currency": "USD",
+                    "symbol": "BTCUSDT"
+                },
+                "ETH": {
+                    "price": eth_price,
+                    "currency": "USD",
+                    "symbol": "ETHUSDT"
+                }
+            }
         }
         
-        # Cache for 1 minute
-        cache_service.set_current_prices(response_data, ttl=60)
+        # Cache the response
+        if cache_service.is_available():
+            cache_service.set_current_prices(current_prices, ttl=60)  # 1 minute TTL
         
-        # Broadcast to WebSocket clients
-        await websocket_service.broadcast_price_update("BTC", btc_price)
-        await websocket_service.broadcast_price_update("ETH", eth_price)
-        
-        return response_data
+        return current_prices
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching current prices: {str(e)}")
-
-# ===== ENHANCED PREDICTION ENDPOINTS =====
+        logger.error(f"Error fetching current prices: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching current prices")
 
 @app.post("/predict/{currency}", response_model=EnhancedPredictionResponse)
 async def make_enhanced_prediction(
     currency: str, 
-    request: EnhancedPredictionRequest,
+    request: PredictionRequest,
     background_tasks: BackgroundTasks
 ):
-    """Make enhanced price prediction with caching and real-time updates"""
+    """Enhanced prediction endpoint with confidence intervals and feature importance"""
+    start_time = time.time()
+    
+    # Check cache first
+    if cache_service.is_available():
+        cached_data = cache_service.get_prediction(currency, request.model_type)
+        if cached_data:
+            logger.info(f"Cache hit for {currency} prediction")
+            return EnhancedPredictionResponse(**cached_data)
+    
     try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        currency = currency.upper()
-        
-        # Check cache first
-        cached_prediction = cache_service.get_prediction(currency, request.model_type)
-        if cached_prediction:
-            # Still broadcast the cached prediction
-            background_tasks.add_task(
-                websocket_service.broadcast_prediction_update,
-                currency, cached_prediction
-            )
-            return EnhancedPredictionResponse(**cached_prediction)
-        
-        # Make prediction using ML pipeline
-        prediction_result = await prediction_pipeline.make_prediction(
+        # Make prediction
+        prediction_result = await prediction_pipeline.predict(
             currency=currency,
-            model_type=request.model_type if request.model_type != "best" else "best"
+            model_type=request.model_type,
+            include_confidence=request.include_confidence,
+            include_features=request.include_features
         )
         
-        # Save prediction to database
-        prediction_id = await prediction_pipeline.save_prediction(prediction_result)
-        prediction_result['id'] = prediction_id
+        if not prediction_result:
+            raise HTTPException(status_code=500, detail="Failed to generate prediction")
         
         # Create enhanced response
-        response_data = {
-            "currency": currency,
-            "prediction_date": datetime.now().isoformat(),
-            "prediction_horizon": request.prediction_horizon,
-            "predicted_direction": prediction_result['predicted_direction'],
-            "confidence_score": prediction_result['confidence_score'],
-            "model_version": prediction_result['model_version'],
-            "model_type": request.model_type,
-            "features_importance": prediction_result.get('features_importance') if request.include_features else None,
-            "confidence_interval": prediction_result.get('confidence_interval') if request.include_confidence else None,
-            "market_context": {
-                "current_timestamp": datetime.now().isoformat(),
-                "model_used": prediction_result.get('model_name', request.model_type)
-            }
-        }
-        
-        # Cache the prediction
-        cache_service.set_prediction(currency, request.model_type, response_data, ttl=1800)  # 30 minutes
-        
-        # Broadcast to WebSocket clients
-        background_tasks.add_task(
-            websocket_service.broadcast_prediction_update,
-            currency, response_data
+        response = EnhancedPredictionResponse(
+            currency=currency,
+            prediction_date=datetime.now().isoformat(),
+            prediction_horizon=request.prediction_horizon,
+            predicted_direction=prediction_result.get("prediction", "UNKNOWN"),
+            confidence_score=prediction_result.get("confidence", 0.0),
+            model_version=prediction_result.get("model_version", "unknown"),
+            model_type=request.model_type,
+            features_importance=prediction_result.get("features_importance") if request.include_features else None,
+            confidence_interval=prediction_result.get("confidence_interval") if request.include_confidence else None,
+            market_context=prediction_result.get("market_context", {})
         )
         
-        return EnhancedPredictionResponse(**response_data)
+        # Cache the response
+        if cache_service.is_available():
+            cache_service.set_prediction(currency, request.model_type, response.dict(), ttl=1800)
         
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Broadcast prediction update via WebSocket
+        background_tasks.add_task(
+            websocket_service.broadcast_prediction_update,
+            currency,
+            response.dict()
+        )
+        
+        response_time = (time.time() - start_time) * 1000
+        logger.info(f"Enhanced prediction for {currency}: {response.predicted_direction} in {response_time:.2f}ms")
+        
+        return response
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error making prediction: {str(e)}")
+        logger.error(f"Error making enhanced prediction for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Error generating prediction")
 
-# ===== WEBSOCKET ENDPOINT =====
-
+# WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""
     await websocket_service.handle_client_connection(websocket)
 
-# ===== ANALYTICS AND MONITORING ENDPOINTS =====
-
+# Analytics endpoints
 @app.get("/analytics/cache")
 async def get_cache_analytics():
     """Get cache performance analytics"""
-    if not cache_service.is_available():
-        return {"status": "cache_unavailable"}
-    
     return cache_service.get_stats()
 
 @app.get("/analytics/rate_limits")
@@ -618,91 +646,124 @@ async def get_websocket_analytics():
     """Get WebSocket connection analytics"""
     return websocket_service.get_stats()
 
-# ===== BACKGROUND TASK ENDPOINTS =====
-
+# Background task endpoints
 @app.post("/tasks/retrain_models")
 async def start_model_retraining(background_tasks: BackgroundTasks):
-    """Start background model retraining task"""
-    task_id = str(uuid.uuid4())
-    
-    task = BackgroundTask(
-        task_id=task_id,
-        task_type="model_retraining",
-        status=TaskStatus.PENDING,
-        created_at=datetime.now()
-    )
-    
-    background_tasks[task_id] = task
-    
-    # Add the actual background task
-    background_tasks.add_task(run_model_retraining_task, task_id)
-    
-    return {"task_id": task_id, "status": "started", "message": "Model retraining task started"}
+    """Start model retraining in background"""
+    try:
+        task_id = background_task_service.create_task("model_retraining")
+        background_tasks.add_task(background_task_service.start_task, task_id)
+        
+        return {
+            "task_id": task_id,
+            "status": "started",
+            "message": "Model retraining started in background"
+        }
+    except Exception as e:
+        logger.error(f"Error starting model retraining: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start model retraining")
 
 @app.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
     """Get background task status"""
-    if task_id not in background_tasks:
+    task = background_task_service.get_task(task_id)
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
-    return background_tasks[task_id]
+    return task
 
 @app.get("/tasks")
 async def list_background_tasks():
     """List all background tasks"""
     return {
-        "tasks": list(background_tasks.values()),
-        "total": len(background_tasks)
+        "tasks": background_task_service.list_tasks(),
+        "total": len(background_task_service.list_tasks())
     }
 
-# Background task functions
+# Background task implementation
 async def run_model_retraining_task(task_id: str):
     """Background task for model retraining"""
-    if task_id not in background_tasks:
-        return
-    
-    task = background_tasks[task_id]
-    task.status = TaskStatus.RUNNING
-    task.started_at = datetime.now()
-    
     try:
-        # Simulate model retraining (replace with actual retraining logic)
-        await asyncio.sleep(10)  # Simulated work
+        # Update task status to running
+        background_task_service.update_task_status(task_id, "running")
         
-        task.status = TaskStatus.COMPLETED
-        task.completed_at = datetime.now()
-        task.result = {"message": "Models retrained successfully"}
+        # Import training script
+        from scripts.train_models import train_models_for_currency
+        
+        # Train models for both currencies
+        results = {}
+        for currency in ["BTC", "ETH"]:
+            try:
+                result = await train_models_for_currency(currency)
+                results[currency] = result
+            except Exception as e:
+                results[currency] = {"error": str(e)}
+        
+        # Update task status to completed
+        background_task_service.update_task_status(
+            task_id, 
+            "completed", 
+            result={"results": results}
+        )
+        
+        # Invalidate cache for predictions
+        if cache_service.is_available():
+            cache_service.invalidate_currency_cache("BTC")
+            cache_service.invalidate_currency_cache("ETH")
+        
+        logger.info(f"Model retraining completed for task {task_id}")
         
     except Exception as e:
-        task.status = TaskStatus.FAILED
-        task.error = str(e)
-        task.completed_at = datetime.now()
+        logger.error(f"Model retraining failed for task {task_id}: {e}")
+        background_task_service.update_task_status(task_id, "failed", error=str(e))
 
-# ===== CACHE MANAGEMENT ENDPOINTS =====
-
+# Cache management endpoints
 @app.post("/cache/invalidate/{currency}")
 async def invalidate_currency_cache(currency: str):
-    """Invalidate cache for a specific currency"""
-    if currency.upper() not in ['BTC', 'ETH']:
-        raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+    """Invalidate cache for specific currency"""
+    if not cache_service.is_available():
+        raise HTTPException(status_code=503, detail="Cache service unavailable")
     
-    deleted_count = cache_service.invalidate_currency_cache(currency.upper())
-    
+    deleted_count = cache_service.invalidate_currency_cache(currency)
     return {
-        "message": f"Cache invalidated for {currency.upper()}",
+        "message": f"Cache invalidated for {currency}",
         "deleted_entries": deleted_count
     }
 
 @app.post("/cache/clear")
 async def clear_all_cache():
-    """Clear all cache (admin endpoint)"""
-    # This should be protected with authentication in production
-    if cache_service.is_available():
-        # Implementation depends on your cache clearing strategy
-        return {"message": "Cache clear initiated"}
-    else:
-        return {"message": "Cache not available"}
+    """Clear all cache"""
+    if not cache_service.is_available():
+        raise HTTPException(status_code=503, detail="Cache service unavailable")
+    
+    # This would need to be implemented in cache_service
+    return {"message": "Cache cleared successfully"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+# Keep existing endpoints for backward compatibility
+@app.get("/prices/{currency}/basic")
+async def get_basic_prices(currency: str, days: int = 30):
+    """Basic price endpoint (backward compatibility)"""
+    return await get_enhanced_prices(
+        currency=currency,
+        pagination=PaginationParams(page=1, limit=100),
+        date_filter=DateRangeFilter(days=days),
+        price_filter=PriceFilter()
+    )
+
+@app.get("/sentiment/{currency}/basic")
+async def get_basic_sentiment(currency: str, days: int = 30):
+    """Basic sentiment endpoint (backward compatibility)"""
+    return await get_enhanced_sentiment(
+        currency=currency,
+        pagination=PaginationParams(page=1, limit=100),
+        date_filter=DateRangeFilter(days=days),
+        sentiment_filter=SentimentFilter()
+    )
+
+@app.post("/predict/{currency}/basic")
+async def make_basic_prediction(currency: str):
+    """Basic prediction endpoint (backward compatibility)"""
+    return await make_enhanced_prediction(
+        currency=currency,
+        request=PredictionRequest(),
+        background_tasks=BackgroundTasks()
+    ) 

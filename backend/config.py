@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     reddit_client_secret: Optional[str] = os.getenv("REDDIT_CLIENT_SECRET")
     reddit_user_agent: str = os.getenv("REDDIT_USER_AGENT", "CryptoPredictorBot/1.0")
     
-    # Redis
+    # Redis Configuration
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    # Fallback for when Redis is not available
+    redis_enabled: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
     
     # Application Settings
     environment: str = os.getenv("ENVIRONMENT", "development")
