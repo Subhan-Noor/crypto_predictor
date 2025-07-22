@@ -4,7 +4,7 @@ on:
   push:
   pull_request:
   schedule:
-    # Run daily data ingestion at 6 AM UTC
+    # Run daily data ingestion and predictions at 6 AM UTC
     - cron: '0 6 * * *'
 
 jobs:
@@ -49,11 +49,92 @@ jobs:
           cd frontend
           npm run build
 
-  daily-data-ingestion:
+  daily-automation:
     # Only run on scheduled trigger (daily cron job)
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     environment: production  # Use production environment for secrets
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+      
+      - name: Run daily data ingestion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          ENVIRONMENT: production
+          REDIS_ENABLED: false  # Disable Redis for GitHub Actions
+        run: |
+          cd backend
+          source venv/bin/activate
+          python scripts/daily_automation.py --data-ingestion
+        continue-on-error: true
+        id: data_ingestion
+      
+      - name: Run daily predictions
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENVIRONMENT: production
+          REDIS_ENABLED: false  # Disable Redis for GitHub Actions
+        run: |
+          cd backend
+          source venv/bin/activate
+          python scripts/daily_automation.py --predictions
+        continue-on-error: true
+        id: predictions
+      
+      - name: Run automation health check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENVIRONMENT: production
+        run: |
+          cd backend
+          source venv/bin/activate
+          python scripts/daily_automation.py --health-check
+        id: health_check
+      
+      - name: Report automation status
+        if: always()
+        run: |
+          echo "=== Daily Automation Report ==="
+          echo "Data Ingestion: ${{ steps.data_ingestion.outcome }}"
+          echo "Predictions: ${{ steps.predictions.outcome }}"
+          echo "Health Check: ${{ steps.health_check.outcome }}"
+          
+          # Create summary
+          if [[ "${{ steps.data_ingestion.outcome }}" == "success" && "${{ steps.predictions.outcome }}" == "success" ]]; then
+            echo "✅ Daily automation completed successfully"
+            exit 0
+          elif [[ "${{ steps.health_check.outcome }}" == "success" ]]; then
+            echo "⚠️ Daily automation partially completed"
+            exit 0
+          else
+            echo "❌ Daily automation failed"
+            exit 1
+          fi
+
+  # Optional: Manual trigger for data ingestion
+  manual-data-ingestion:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -66,7 +147,7 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           pip install -r requirements.txt
-      - name: Run daily data ingestion
+      - name: Run manual data ingestion
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -77,4 +158,4 @@ jobs:
         run: |
           cd backend
           source venv/bin/activate
-          python scripts/data_ingestion.py daily
+          python scripts/daily_automation.py --full

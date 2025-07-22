@@ -1,0 +1,27 @@
+# Python
+backend/venv/
+backend/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+backend/.env
+.env
+
+# Jupyter
+backend/notebooks/.ipynb_checkpoints/
+
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+dist/
+build/

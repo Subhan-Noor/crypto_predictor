@@ -1,0 +1,21 @@
+{
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/.next",
+  "framework": "nextjs",
+  "installCommand": "cd frontend && npm install",
+  "devCommand": "cd frontend && npm run dev",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@next_public_api_url"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_API_URL": "@next_public_api_url"
+    }
+  }
+} 
