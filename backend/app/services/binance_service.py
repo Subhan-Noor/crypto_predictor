@@ -1,3 +1,4 @@
+# PATCHED: Stage 5 backend fix - get_current_price is synchronous.
 import requests
 from typing import Dict
 

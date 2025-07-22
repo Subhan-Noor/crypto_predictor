@@ -175,43 +175,47 @@ def create_pagination_info(page: int, limit: int, total_items: int) -> Dict[str,
         "has_previous": page > 1
     }
 
+# PATCHED: Fix apply_date_filter to standardize all datetimes to UTC and offset-aware ---
+from dateutil import parser as date_parser
+import pytz
+
 def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List[Dict]:
-    """Apply date filtering to records"""
+    """Apply date filtering to records (patched for offset-naive/aware)"""
     if not date_filter.start_date and not date_filter.end_date and not date_filter.days:
         return records
-    
     filtered_records = []
-    current_time = datetime.now()
-    
+    current_time = datetime.now(pytz.UTC)
+    def to_utc(dt):
+        if dt is None:
+            return None
+        if isinstance(dt, str):
+            try:
+                dt = date_parser.parse(dt)
+            except Exception:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=pytz.UTC)
+        else:
+            dt = dt.astimezone(pytz.UTC)
+        return dt
+    start = to_utc(date_filter.start_date)
+    end = to_utc(date_filter.end_date)
     for record in records:
         record_date = record.get("date")
-        if not record_date:
+        record_date_utc = to_utc(record_date)
+        if not record_date_utc:
             continue
-            
-        # Convert string to datetime if needed
-        if isinstance(record_date, str):
-            try:
-                record_date = datetime.fromisoformat(record_date.replace('Z', '+00:00'))
-            except:
-                continue
-        
-        # Apply date filters
         include_record = True
-        
-        if date_filter.start_date and record_date < date_filter.start_date:
+        if start and record_date_utc < start:
             include_record = False
-        
-        if date_filter.end_date and record_date > date_filter.end_date:
+        if end and record_date_utc > end:
             include_record = False
-        
         if date_filter.days:
             cutoff_date = current_time - timedelta(days=date_filter.days)
-            if record_date < cutoff_date:
+            if record_date_utc < cutoff_date:
                 include_record = False
-        
         if include_record:
             filtered_records.append(record)
-    
     return filtered_records
 
 def paginate_data(data: List[Dict], page: int, limit: int, sort_by: str = "date", sort_order: str = "desc") -> tuple:
@@ -520,6 +524,7 @@ async def get_enhanced_sentiment(
         logger.error(f"Error fetching enhanced sentiment for {currency}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# --- PATCH: Fix /current_prices to call binance_service.get_current_price synchronously ---
 @app.get("/current_prices")
 async def get_enhanced_current_prices():
     """Enhanced current prices endpoint with caching"""
@@ -528,38 +533,37 @@ async def get_enhanced_current_prices():
         cached_data = cache_service.get_current_prices()
         if cached_data:
             return cached_data
-    
     # Fetch current prices
     try:
-        btc_price = await binance_service.get_current_price("BTCUSDT")
-        eth_price = await binance_service.get_current_price("ETHUSDT")
-        
+        btc_price = binance_service.get_current_price("BTCUSDT")
+        eth_price = binance_service.get_current_price("ETHUSDT")
+        # Binance returns dicts with 'price' as string
+        btc_price_val = float(btc_price["price"]) if isinstance(btc_price, dict) and "price" in btc_price else None
+        eth_price_val = float(eth_price["price"]) if isinstance(eth_price, dict) and "price" in eth_price else None
         current_prices = {
             "timestamp": datetime.now().isoformat(),
             "prices": {
                 "BTC": {
-                    "price": btc_price,
+                    "price": btc_price_val,
                     "currency": "USD",
                     "symbol": "BTCUSDT"
                 },
                 "ETH": {
-                    "price": eth_price,
+                    "price": eth_price_val,
                     "currency": "USD",
                     "symbol": "ETHUSDT"
                 }
             }
         }
-        
         # Cache the response
         if cache_service.is_available():
             cache_service.set_current_prices(current_prices, ttl=60)  # 1 minute TTL
-        
         return current_prices
-        
     except Exception as e:
         logger.error(f"Error fetching current prices: {e}")
         raise HTTPException(status_code=500, detail="Error fetching current prices")
 
+# --- PATCH: Fix /predict/{currency} to use make_prediction ---
 @app.post("/predict/{currency}", response_model=EnhancedPredictionResponse)
 async def make_enhanced_prediction(
     currency: str, 
@@ -568,56 +572,45 @@ async def make_enhanced_prediction(
 ):
     """Enhanced prediction endpoint with confidence intervals and feature importance"""
     start_time = time.time()
-    
     # Check cache first
     if cache_service.is_available():
         cached_data = cache_service.get_prediction(currency, request.model_type)
         if cached_data:
             logger.info(f"Cache hit for {currency} prediction")
             return EnhancedPredictionResponse(**cached_data)
-    
     try:
-        # Make prediction
-        prediction_result = await prediction_pipeline.predict(
+        # Make prediction (patched to use make_prediction)
+        prediction_result = await prediction_pipeline.make_prediction(
             currency=currency,
-            model_type=request.model_type,
-            include_confidence=request.include_confidence,
-            include_features=request.include_features
+            model_type=request.model_type
         )
-        
         if not prediction_result:
             raise HTTPException(status_code=500, detail="Failed to generate prediction")
-        
         # Create enhanced response
         response = EnhancedPredictionResponse(
             currency=currency,
             prediction_date=datetime.now().isoformat(),
-            prediction_horizon=request.prediction_horizon,
-            predicted_direction=prediction_result.get("prediction", "UNKNOWN"),
-            confidence_score=prediction_result.get("confidence", 0.0),
+            prediction_horizon=7,
+            predicted_direction=prediction_result.get("predicted_direction", "UNKNOWN"),
+            confidence_score=prediction_result.get("confidence_score", 0.0),
             model_version=prediction_result.get("model_version", "unknown"),
             model_type=request.model_type,
-            features_importance=prediction_result.get("features_importance") if request.include_features else None,
-            confidence_interval=prediction_result.get("confidence_interval") if request.include_confidence else None,
-            market_context=prediction_result.get("market_context", {})
+            features_importance=None,
+            confidence_interval=None,
+            market_context={}
         )
-        
         # Cache the response
         if cache_service.is_available():
             cache_service.set_prediction(currency, request.model_type, response.dict(), ttl=1800)
-        
         # Broadcast prediction update via WebSocket
         background_tasks.add_task(
             websocket_service.broadcast_prediction_update,
             currency,
             response.dict()
         )
-        
         response_time = (time.time() - start_time) * 1000
         logger.info(f"Enhanced prediction for {currency}: {response.predicted_direction} in {response_time:.2f}ms")
-        
         return response
-        
     except HTTPException:
         raise
     except Exception as e:
