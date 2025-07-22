@@ -10,13 +10,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
+# Install system dependencies and build tools
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         libpq-dev \
-    && pip install --no-cache-dir -r backend/requirements.txt \
-    && apt-get purge -y --auto-remove libpq-dev \
+        build-essential
+
+# Copy requirements and install Python dependencies
+COPY backend/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Remove build tools to reduce image size
+RUN apt-get purge -y --auto-remove libpq-dev build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
