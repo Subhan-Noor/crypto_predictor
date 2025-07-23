@@ -1,0 +1,76 @@
+name: Initial Data Population
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  populate-historical-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        
+    - name: Populate historical data
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        ENVIRONMENT: production
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        REDIS_ENABLED: true
+      run: |
+        cd backend
+        python scripts/populate_database.py --full
+        
+    - name: Verify data population
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        ENVIRONMENT: production
+      run: |
+        cd backend
+        python -c "
+        import asyncio
+        import sys
+        sys.path.append('.')
+        from app.database import db_manager
+        
+        async def check_data():
+            await db_manager.connect()
+            btc_prices = await db_manager.get_records('crypto_prices', {'currency': 'BTC'})
+            eth_prices = await db_manager.get_records('crypto_prices', {'currency': 'ETH'})
+            btc_sentiment = await db_manager.get_records('crypto_sentiment', {'currency': 'BTC'})
+            eth_sentiment = await db_manager.get_records('crypto_sentiment', {'currency': 'ETH'})
+            
+            print(f'BTC Price Records: {len(btc_prices)}')
+            print(f'ETH Price Records: {len(eth_prices)}')
+            print(f'BTC Sentiment Records: {len(btc_sentiment)}')
+            print(f'ETH Sentiment Records: {len(eth_sentiment)}')
+            
+            await db_manager.close()
+        
+        asyncio.run(check_data())
+        "
+        
+    - name: Notify completion
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'Initial Data Population Completed',
+            body: `Initial data population completed on ${new Date().toISOString()}. Check the workflow run for details.`
+          }) 

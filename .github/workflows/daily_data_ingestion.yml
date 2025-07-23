@@ -1,0 +1,61 @@
+name: Daily Data Ingestion
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  populate-database:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        
+    - name: Run database population
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        ENVIRONMENT: production
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        REDIS_ENABLED: true
+      run: |
+        cd backend
+        python scripts/populate_database.py --current
+        
+    - name: Run daily automation
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        ENVIRONMENT: production
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        REDIS_ENABLED: true
+      run: |
+        cd backend
+        python scripts/daily_automation.py --full
+        
+    - name: Notify on failure
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'Daily Data Ingestion Failed',
+            body: `Daily data ingestion failed on ${new Date().toISOString()}. Check the workflow run for details.`
+          }) 
