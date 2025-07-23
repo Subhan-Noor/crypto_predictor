@@ -314,14 +314,28 @@ async def enhanced_health_check():
 @app.get("/prices/{currency}", response_model=EnhancedPriceResponse)
 async def get_enhanced_prices(
     currency: str,
+    days: Optional[int] = 30,  # Direct days parameter for frontend compatibility
+    start_date: Optional[str] = None,  # Optional start_date as string
+    end_date: Optional[str] = None,    # Optional end_date as string
     pagination: PaginationParams = Depends(),
-    date_filter: DateRangeFilter = Depends(),
     price_filter: PriceFilter = Depends()
 ):
     """Enhanced price endpoint with caching, filtering, and pagination"""
     start_time = time.time()
+    
+    # Create DateRangeFilter from query parameters
+    try:
+        date_filter = DateRangeFilter(
+            days=days,
+            start_date=datetime.fromisoformat(start_date) if start_date else None,
+            end_date=datetime.fromisoformat(end_date) if end_date else None
+        )
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        date_filter = DateRangeFilter(days=days or 30)
+    
     # Check cache first
-    cache_key = f"prices:{currency}:{pagination.page}:{pagination.limit}"
+    cache_key = f"prices:{currency}:{pagination.page}:{pagination.limit}:{days}"
     if cache_service.is_available():
         cached_data = cache_service.get_prices(
             currency, 
@@ -330,7 +344,7 @@ async def get_enhanced_prices(
             pagination.limit
         )
         if cached_data:
-            logger.info(f"Cache hit for {currency} prices")
+            logger.info(f"Cache hit for {currency} prices (days: {days})")
             return EnhancedPriceResponse(**cached_data)
     # Fetch from database
     try:
@@ -428,17 +442,31 @@ async def get_enhanced_prices(
 @app.get("/sentiment/{currency}", response_model=EnhancedSentimentResponse)
 async def get_enhanced_sentiment(
     currency: str,
+    days: Optional[int] = 30,  # Direct days parameter for frontend compatibility
+    start_date: Optional[str] = None,  # Optional start_date as string
+    end_date: Optional[str] = None,    # Optional end_date as string
     pagination: PaginationParams = Depends(),
-    date_filter: DateRangeFilter = Depends(),
     sentiment_filter: SentimentFilter = Depends()
 ):
     """Enhanced sentiment endpoint with caching, filtering, and pagination"""
     start_time = time.time()
+    
+    # Create DateRangeFilter from query parameters
+    try:
+        date_filter = DateRangeFilter(
+            days=days,
+            start_date=datetime.fromisoformat(start_date) if start_date else None,
+            end_date=datetime.fromisoformat(end_date) if end_date else None
+        )
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        date_filter = DateRangeFilter(days=days or 30)
+    
     # Check cache first
     if cache_service.is_available():
         cached_data = cache_service.get_sentiment(currency, date_filter.days or 30)
         if cached_data:
-            logger.info(f"Cache hit for {currency} sentiment")
+            logger.info(f"Cache hit for {currency} sentiment (days: {days})")
             return EnhancedSentimentResponse(**cached_data)
     # Fetch from database
     try:
