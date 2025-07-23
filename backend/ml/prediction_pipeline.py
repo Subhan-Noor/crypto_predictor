@@ -271,7 +271,7 @@ class CryptoPredictionPipeline:
             }
             
             # Insert into database
-            record_id = await db_manager.insert_record('predictions', prediction_data)
+            record_id = await db_manager.insert_prediction(prediction_data)
             
             logger.info(f"Saved prediction to database with ID: {record_id}")
             return record_id

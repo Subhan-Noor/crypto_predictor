@@ -204,5 +204,21 @@ class DatabaseManager:
             logger.error(f"Error fetching crypto sentiment for {currency}: {str(e)}")
             return []
 
+    async def insert_prediction(self, prediction_data: dict) -> str:
+        """Insert a prediction record into the predictions table and return the record ID."""
+        try:
+            if not self.client:
+                logger.error("Database client not available")
+                return None
+            result = self.client.table("predictions").insert(prediction_data).execute()
+            if result.data and len(result.data) > 0:
+                logger.info(f"Successfully inserted prediction record: {result.data[0].get('id')}")
+                return result.data[0].get('id')
+            logger.warning("Prediction insert returned no data")
+            return None
+        except Exception as e:
+            logger.error(f"Error inserting prediction: {str(e)}")
+            return None
+
 # Global database manager instance
 db_manager = DatabaseManager() 
