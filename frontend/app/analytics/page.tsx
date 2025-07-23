@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter } from 'recharts'
 import { apiService } from '../../utils/api'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>(TIME_RANGES[2]) // Default to 30D
   const [refreshing, setRefreshing] = useState(false)
 
-  const fetchAnalyticsData = async (timeRange: TimeRange) => {
+  const fetchAnalyticsData = useCallback(async (timeRange: TimeRange) => {
     try {
       setLoading(true)
       setError(null)
@@ -84,7 +84,7 @@ export default function AnalyticsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [])
 
   const calculateAnalytics = (btcData: any[], ethData: any[], btcCurrent: any, ethCurrent: any): AnalyticsData => {
     // Create sample analytics data since we need actual price data for real calculations
@@ -119,19 +119,19 @@ export default function AnalyticsPage() {
     }
   }
 
-  const handleTimeRangeChange = (timeRange: TimeRange) => {
+  const handleTimeRangeChange = useCallback((timeRange: TimeRange) => {
     setSelectedTimeRange(timeRange)
     fetchAnalyticsData(timeRange)
-  }
+  }, [fetchAnalyticsData])
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setRefreshing(true)
     fetchAnalyticsData(selectedTimeRange)
-  }
+  }, [fetchAnalyticsData, selectedTimeRange])
 
   useEffect(() => {
     fetchAnalyticsData(selectedTimeRange)
-  }, [])
+  }, [fetchAnalyticsData, selectedTimeRange])
 
   if (loading) {
     return (

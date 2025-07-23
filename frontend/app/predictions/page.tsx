@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 import { apiService } from '../../utils/api'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -50,12 +50,40 @@ export default function PredictionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchPredictionData = async () => {
+  const fetchPredictionData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
       // Create sample prediction data since backend might not have historical predictions yet
+      const generateSamplePredictions = (): PredictionHistoryItem[] => {
+        const predictions: PredictionHistoryItem[] = []
+        const currencies = ['BTC', 'ETH']
+        const models = ['random_forest', 'logistic_regression', 'lstm']
+        
+        for (let i = 0; i < selectedTimeRange; i++) {
+          currencies.forEach(currency => {
+            const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
+            const predicted_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
+            const actual_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
+            
+            predictions.push({
+              id: `${currency}-${date.toISOString()}-${Math.random()}`,
+              currency,
+              prediction_date: date.toISOString(),
+              predicted_direction,
+              confidence_score: 0.5 + Math.random() * 0.4, // 50-90% confidence
+              actual_direction,
+              is_correct: predicted_direction === actual_direction,
+              model_version: 'v1.0.0',
+              model_type: models[Math.floor(Math.random() * models.length)]
+            })
+          })
+        }
+        
+        return predictions.sort((a, b) => new Date(b.prediction_date).getTime() - new Date(a.prediction_date).getTime())
+      }
+
       const samplePredictions = generateSamplePredictions()
       const sampleAccuracy = calculateSampleAccuracy(samplePredictions)
       const sampleModelPerformance = calculateModelPerformance(samplePredictions)
@@ -70,35 +98,7 @@ export default function PredictionsPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const generateSamplePredictions = (): PredictionHistoryItem[] => {
-    const predictions: PredictionHistoryItem[] = []
-    const currencies = ['BTC', 'ETH']
-    const models = ['random_forest', 'logistic_regression', 'lstm']
-    
-    for (let i = 0; i < selectedTimeRange; i++) {
-      currencies.forEach(currency => {
-        const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
-        const predicted_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
-        const actual_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
-        
-        predictions.push({
-          id: `${currency}-${date.toISOString()}-${Math.random()}`,
-          currency,
-          prediction_date: date.toISOString(),
-          predicted_direction,
-          confidence_score: 0.5 + Math.random() * 0.4, // 50-90% confidence
-          actual_direction,
-          is_correct: predicted_direction === actual_direction,
-          model_version: 'v1.0.0',
-          model_type: models[Math.floor(Math.random() * models.length)]
-        })
-      })
-    }
-    
-    return predictions.sort((a, b) => new Date(b.prediction_date).getTime() - new Date(a.prediction_date).getTime())
-  }
+  }, [selectedTimeRange])
 
   const calculateSampleAccuracy = (predictions: PredictionHistoryItem[]): AccuracyMetrics => {
     const total = predictions.length
@@ -183,7 +183,7 @@ export default function PredictionsPage() {
 
   useEffect(() => {
     fetchPredictionData()
-  }, [selectedTimeRange])
+  }, [fetchPredictionData])
 
   if (loading) {
     return (

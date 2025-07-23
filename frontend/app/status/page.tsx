@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { apiService } from '../../utils/api'
 
 interface SystemStatus {
@@ -9,6 +9,23 @@ interface SystemStatus {
   cache: 'operational' | 'degraded' | 'down'
   websocket: 'operational' | 'degraded' | 'down'
   lastUpdate: Date | null
+}
+
+interface APIHealthResponse {
+  status?: string
+  services?: {
+    database?: {
+      status?: string
+    }
+    cache?: {
+      status?: string
+    }
+    websocket?: {
+      service_status?: string
+    }
+  }
+  version?: string
+  environment?: string
 }
 
 export default function StatusPage() {
@@ -20,20 +37,20 @@ export default function StatusPage() {
     lastUpdate: null
   })
   const [loading, setLoading] = useState(true)
-  const [apiHealth, setApiHealth] = useState<any>(null)
+  const [apiHealth, setApiHealth] = useState<APIHealthResponse | null>(null)
 
-  const checkSystemHealth = async () => {
+  const checkSystemHealth = useCallback(async () => {
     try {
       setLoading(true)
-      const health = await apiService.checkHealth()
+      const health = await apiService.checkHealth() as APIHealthResponse
       setApiHealth(health)
       
       // Parse health response to determine individual service status
       const newStatus: SystemStatus = {
-        api: health?.status === 'ok' ? 'operational' : 'degraded',
-        database: health?.services?.database?.status === 'operational' ? 'operational' : 'degraded',
-        cache: health?.services?.cache?.status === 'operational' ? 'operational' : 'degraded',
-        websocket: health?.services?.websocket?.service_status === 'operational' ? 'operational' : 'degraded',
+        api: health?.status === 'ok' || health?.status === 'healthy' ? 'operational' : 'degraded',
+        database: health?.services?.database?.status === 'operational' || health?.services?.database?.status === 'healthy' ? 'operational' : 'degraded',
+        cache: health?.services?.cache?.status === 'operational' || health?.services?.cache?.status === 'healthy' ? 'operational' : 'degraded',
+        websocket: health?.services?.websocket?.service_status === 'operational' || health?.services?.websocket?.service_status === 'healthy' ? 'operational' : 'degraded',
         lastUpdate: new Date()
       }
       
@@ -50,14 +67,14 @@ export default function StatusPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     checkSystemHealth()
     // Auto-refresh every 30 seconds
     const interval = setInterval(checkSystemHealth, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [checkSystemHealth])
 
   const getStatusColor = (status: 'operational' | 'degraded' | 'down') => {
     switch (status) {
@@ -160,7 +177,7 @@ export default function StatusPage() {
               <div className="space-y-1 text-gray-400">
                 <div className="flex justify-between">
                   <span>Status:</span>
-                  <span className={getStatusColor(systemStatus.api)}>{apiHealth.status}</span>
+                  <span className={getStatusColor(systemStatus.api)}>{apiHealth.status || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Version:</span>
@@ -178,8 +195,8 @@ export default function StatusPage() {
                 {apiHealth.services && Object.entries(apiHealth.services).map(([service, info]: [string, any]) => (
                   <div key={service} className="flex justify-between">
                     <span>{service}:</span>
-                    <span className={getStatusColor(info.status === 'operational' ? 'operational' : 'degraded')}>
-                      {info.status || 'unknown'}
+                    <span className={getStatusColor(info?.status === 'operational' || info?.status === 'healthy' ? 'operational' : 'degraded')}>
+                      {info?.status || 'unknown'}
                     </span>
                   </div>
                 ))}
