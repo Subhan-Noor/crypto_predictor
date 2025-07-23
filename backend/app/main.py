@@ -610,6 +610,27 @@ async def get_automation_history(days: int = 7):
         raise HTTPException(status_code=500, detail=f"Error getting automation history: {str(e)}")
 
 
+@app.get("/test_fallback")
+async def test_fallback():
+    """Test endpoint to verify fallback mechanisms are working"""
+    try:
+        # Test current price with fallback
+        btc_result = await binance_fetcher.get_current_price('BTCUSDT')
+        eth_result = await binance_fetcher.get_current_price('ETHUSDT')
+        
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "btc_result": btc_result,
+            "eth_result": eth_result,
+            "fallback_working": "source" in btc_result or "source" in eth_result
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "fallback_working": False
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
