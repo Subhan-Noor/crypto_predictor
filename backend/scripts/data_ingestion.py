@@ -37,10 +37,15 @@ class DataIngestionManager:
             try:
                 logger.info(f"Fetching price data for {currency}")
                 
-                # Get historical prices from Binance
+                # Get historical prices from Binance (now async)
                 symbol = f"{currency}USDT"
-                historical_data = self.price_fetcher.get_historical_prices(
-                    symbol, interval="1d", limit=days_back
+                
+                # Run async function in sync context
+                import asyncio
+                historical_data = asyncio.run(
+                    self.price_fetcher.get_historical_prices(
+                        symbol, interval="1d", limit=days_back
+                    )
                 )
                 
                 # Store in database
