@@ -11,7 +11,7 @@ import {
 } from '../types'
 
 // API Base Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cryptopredictor-production.up.railway.app'
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -136,10 +136,25 @@ export const handleAPIError = (error: any): string => {
   if (error.response?.data?.detail) {
     return error.response.data.detail
   }
-  if (error.message) {
-    return error.message
+  if (error.code === 'ERR_NETWORK') {
+    return 'Network connection failed. Please check your internet connection or try again later.'
   }
-  return 'An unexpected error occurred'
+  if (error.code === 'ECONNABORTED') {
+    return 'Request timed out. The server may be temporarily unavailable.'
+  }
+  if (error.response?.status === 404) {
+    return 'The requested data was not found.'
+  }
+  if (error.response?.status === 500) {
+    return 'Server error occurred. Please try again later.'
+  }
+  if (error.response?.status === 503) {
+    return 'Service temporarily unavailable. Please try again in a few minutes.'
+  }
+  if (error.message) {
+    return `Connection error: ${error.message}`
+  }
+  return 'An unexpected error occurred. Please try refreshing the page.'
 }
 
 // Data transformation helpers
