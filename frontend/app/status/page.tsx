@@ -13,7 +13,16 @@ interface SystemStatus {
 
 interface APIHealthResponse {
   status?: string
+  timestamp?: string
+  database?: {
+    connected?: boolean
+    btc_records?: number
+    eth_records?: number
+  }
   services?: {
+    binance_api?: string
+    twitter_scraper?: string
+    reddit_scraper?: string
     database?: {
       status?: string
     }
@@ -22,6 +31,7 @@ interface APIHealthResponse {
     }
     websocket?: {
       service_status?: string
+      status?: string
     }
   }
   version?: string
@@ -45,12 +55,19 @@ export default function StatusPage() {
       const health = await apiService.checkHealth() as APIHealthResponse
       setApiHealth(health)
       
-      // Parse health response to determine individual service status
+      // Parse health response based on actual API response format
       const newStatus: SystemStatus = {
         api: health?.status === 'ok' || health?.status === 'healthy' ? 'operational' : 'degraded',
-        database: health?.services?.database?.status === 'operational' || health?.services?.database?.status === 'healthy' ? 'operational' : 'degraded',
-        cache: health?.services?.cache?.status === 'operational' || health?.services?.cache?.status === 'healthy' ? 'operational' : 'degraded',
-        websocket: health?.services?.websocket?.service_status === 'operational' || health?.services?.websocket?.service_status === 'healthy' ? 'operational' : 'degraded',
+        database: health?.database?.connected === true || 
+                 health?.services?.database?.status === 'operational' || 
+                 health?.services?.database?.status === 'healthy' || 
+                 health?.services?.database?.status === 'connected' ? 'operational' : 'degraded',
+        cache: health?.services?.cache?.status === 'operational' || 
+               health?.services?.cache?.status === 'healthy' || 
+               health?.services?.cache?.status === 'available' ? 'operational' : 'degraded',
+        websocket: health?.services?.websocket?.service_status === 'operational' || 
+                   health?.services?.websocket?.service_status === 'healthy' || 
+                   health?.services?.websocket?.status === 'operational' ? 'operational' : 'degraded',
         lastUpdate: new Date()
       }
       
@@ -180,8 +197,8 @@ export default function StatusPage() {
                   <span className={getStatusColor(systemStatus.api)}>{apiHealth.status || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Version:</span>
-                  <span>{apiHealth.version || 'Unknown'}</span>
+                  <span>Timestamp:</span>
+                  <span>{apiHealth.timestamp ? new Date(apiHealth.timestamp).toLocaleString() : 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Environment:</span>
@@ -190,13 +207,33 @@ export default function StatusPage() {
               </div>
             </div>
             <div>
-              <h3 className="text-white font-medium mb-2">Services</h3>
+              <h3 className="text-white font-medium mb-2">Database & Services</h3>
               <div className="space-y-1 text-gray-400">
+                {apiHealth.database && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Database Connected:</span>
+                      <span className={getStatusColor(apiHealth.database.connected ? 'operational' : 'down')}>
+                        {apiHealth.database.connected ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>BTC Records:</span>
+                      <span>{apiHealth.database.btc_records || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>ETH Records:</span>
+                      <span>{apiHealth.database.eth_records || 0}</span>
+                    </div>
+                  </>
+                )}
                 {apiHealth.services && Object.entries(apiHealth.services).map(([service, info]: [string, any]) => (
                   <div key={service} className="flex justify-between">
                     <span>{service}:</span>
-                    <span className={getStatusColor(info?.status === 'operational' || info?.status === 'healthy' ? 'operational' : 'degraded')}>
-                      {info?.status || 'unknown'}
+                    <span className={getStatusColor(
+                      info === 'available' || info === 'operational' || info === 'healthy' ? 'operational' : 'degraded'
+                    )}>
+                      {info || 'unknown'}
                     </span>
                   </div>
                 ))}

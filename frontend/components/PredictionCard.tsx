@@ -29,8 +29,24 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({
     ? 'from-green-500/20 to-transparent' 
     : 'from-red-500/20 to-transparent'
 
-  const confidenceLevel = prediction.confidence >= 0.7 ? 'High' : 
-                         prediction.confidence >= 0.5 ? 'Medium' : 'Low'
+  // Handle edge cases for confidence
+  const confidence = typeof prediction.confidence === 'number' && !isNaN(prediction.confidence) 
+    ? prediction.confidence 
+    : 0.5
+  const confidenceLevel = confidence >= 0.7 ? 'High' : 
+                         confidence >= 0.5 ? 'Medium' : 'Low'
+
+  // Handle edge cases for target date
+  const targetDate = prediction.target_date ? 
+    (() => {
+      try {
+        const date = new Date(prediction.target_date)
+        return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleDateString()
+      } catch {
+        return 'Invalid Date'
+      }
+    })() : 
+    'Unknown'
 
   return (
     <div className={`bg-gradient-to-br ${bgGradient} bg-dark-800 rounded-lg p-6 border border-dark-700`}>
@@ -62,11 +78,11 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({
         </div>
       </div>
       
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <span className="text-gray-400">Confidence: </span>
           <span className="text-white font-medium">
-            {(prediction.confidence * 100).toFixed(1)}%
+            {(confidence * 100).toFixed(1)}%
           </span>
         </div>
         <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -80,7 +96,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({
 
       <div className="mt-3 pt-3 border-t border-dark-700">
         <div className="text-xs text-gray-400">
-          Target: {new Date(prediction.target_date).toLocaleDateString()}
+          Target: {targetDate}
         </div>
       </div>
     </div>

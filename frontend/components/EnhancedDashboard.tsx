@@ -109,7 +109,7 @@ export const EnhancedDashboard: React.FC = () => {
             currency,
             prediction: {
               currency,
-              prediction: 'UP',
+              prediction: 'UP' as const,
               confidence: 0.65,
               target_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
               created_at: new Date().toISOString(),
@@ -133,6 +133,27 @@ export const EnhancedDashboard: React.FC = () => {
     } catch (err) {
       console.error('Failed to load predictions:', err)
       updateErrorState('predictions', handleAPIError(err))
+      
+      // Set fallback predictions even on error
+      const fallbackPredictions: Record<Currency, PredictionData> = {
+        BTC: {
+          currency: 'BTC',
+          prediction: 'UP',
+          confidence: 0.65,
+          target_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          created_at: new Date().toISOString(),
+          features: {}
+        },
+        ETH: {
+          currency: 'ETH',
+          prediction: 'DOWN',
+          confidence: 0.58,
+          target_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          created_at: new Date().toISOString(),
+          features: {}
+        }
+      }
+      setState(prev => ({ ...prev, predictions: fallbackPredictions }))
     } finally {
       updateLoadingState('predictions', false)
     }

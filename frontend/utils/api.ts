@@ -110,8 +110,18 @@ export const apiService = {
 
   // Predictions
   async getPrediction(currency: Currency): Promise<PredictionData> {
-    const response = await apiClient.post<PredictionData>(`/predict/${currency}`, {})
-    return response.data
+    const response = await apiClient.post<any>(`/predict/${currency}`, {})
+    
+    // Transform EnhancedPredictionResponse to PredictionData format
+    const enhancedResponse = response.data
+    return {
+      currency: enhancedResponse.currency as Currency,
+      prediction: enhancedResponse.predicted_direction as 'UP' | 'DOWN',
+      confidence: enhancedResponse.confidence_score || 0.5,
+      target_date: enhancedResponse.prediction_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: enhancedResponse.prediction_date || new Date().toISOString(),
+      features: enhancedResponse.features_importance || {}
+    }
   },
 
   // Basic endpoints (fallback)
