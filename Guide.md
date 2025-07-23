@@ -206,7 +206,7 @@ crypto_sentiment:
    - Add real-time price updates with WebSocket integration
    - Implement price alerts and notifications
    - Add price change indicators and trend analysis
-
+ 
 3. **Expand Data Range & Historical Analysis**
    - Add configurable time ranges (1D, 7D, 30D, 90D, 1Y, All)
    - Implement data range selector component
