@@ -33,21 +33,51 @@ allowed_origins = [
     "https://localhost:3000"
 ]
 
-# Add production origins if environment is production
+# Add production origins
 if settings.environment == "production":
     # Add your actual Vercel domain(s) here
     allowed_origins.extend([
-        "https://crypto-predictor-one.vercel.app",  # No trailing slash!
-        "https://cryptopredictor-production.up.railway.app"  # Allow backend self-origin for health checks
+        "https://crypto-predictor-6gijqgqtd-subhan-noors-projects.vercel.app",  # Current Vercel domain
+        "https://crypto-predictor-one.vercel.app",  # Alternative Vercel domain
+        "https://cryptopredictor-production.up.railway.app",  # Backend self-origin for health checks
+    ])
+else:
+    # In development, also allow the Railway backend domain for testing
+    allowed_origins.extend([
+        "https://cryptopredictor-production.up.railway.app"
     ])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# For maximum compatibility, also allow all Vercel domains in production
+if settings.environment == "production":
+    # Use origin function to allow all Vercel subdomains
+    def custom_origin_handler(origin: str) -> bool:
+        # Allow local development
+        if origin in ["http://localhost:3000", "http://127.0.0.1:3000", "https://localhost:3000"]:
+            return True
+        # Allow specific domains
+        if origin in allowed_origins:
+            return True
+        # Allow any Vercel deployment
+        if origin and ".vercel.app" in origin:
+            return True
+        return False
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https://.*\.vercel\.app",
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Initialize services
 twitter_scraper = TwitterScraper()
