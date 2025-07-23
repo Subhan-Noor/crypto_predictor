@@ -222,17 +222,10 @@ async def get_sentiment(currency: str, days: int = 30):
 async def get_current_prices():
     """Get current prices for BTC and ETH"""
     try:
-        # Fetch current prices
-        btc_price = None
-        eth_price = None
-        try:
-            btc_price = await binance_fetcher.get_current_price('BTCUSDT')
-        except Exception as e:
-            btc_price = {"error": f"Binance fetch failed: {str(e)}"}
-        try:
-            eth_price = await binance_fetcher.get_current_price('ETHUSDT')
-        except Exception as e:
-            eth_price = {"error": f"Binance fetch failed: {str(e)}"}
+        # Fetch current prices with fallback handling
+        btc_price = await binance_fetcher.get_current_price('BTCUSDT')
+        eth_price = await binance_fetcher.get_current_price('ETHUSDT')
+        
         return {
             "timestamp": datetime.now().isoformat(),
             "BTC": btc_price,
