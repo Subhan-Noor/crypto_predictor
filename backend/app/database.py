@@ -1,8 +1,9 @@
 import os
 import sys
-from typing import Optional
+from typing import Optional, List, Dict
 from supabase import create_client, Client
 import logging
+from datetime import datetime, timedelta
 
 # Add the parent directory to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -219,6 +220,25 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error inserting prediction: {str(e)}")
             return None
+
+    async def get_predictions(self, currency: str, days: int = 30, limit: int = 100) -> List[Dict]:
+        """Get historical predictions for a currency"""
+        try:
+            if not self.client:
+                return []
+            
+            # Calculate date range
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            # Query predictions table
+            result = self.client.table("predictions").select("*").eq("currency", currency).gte("prediction_date", start_date.isoformat()).order("prediction_date", desc=True).limit(limit).execute()
+            
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Error fetching predictions for {currency}: {str(e)}")
+            return []
 
 # Global database manager instance
 db_manager = DatabaseManager() 

@@ -62,12 +62,15 @@ export default function StatusPage() {
                  health?.services?.database?.status === 'operational' || 
                  health?.services?.database?.status === 'healthy' || 
                  health?.services?.database?.status === 'connected' ? 'operational' : 'degraded',
+        // Cache and WebSocket are optional services - show as operational if not present
         cache: health?.services?.cache?.status === 'operational' || 
                health?.services?.cache?.status === 'healthy' || 
-               health?.services?.cache?.status === 'available' ? 'operational' : 'degraded',
+               health?.services?.cache?.status === 'available' || 
+               !health?.services?.cache ? 'operational' : 'degraded',
         websocket: health?.services?.websocket?.service_status === 'operational' || 
                    health?.services?.websocket?.service_status === 'healthy' || 
-                   health?.services?.websocket?.status === 'operational' ? 'operational' : 'degraded',
+                   health?.services?.websocket?.status === 'operational' || 
+                   !health?.services?.websocket ? 'operational' : 'degraded',
         lastUpdate: new Date()
       }
       

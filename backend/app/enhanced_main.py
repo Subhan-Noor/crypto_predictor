@@ -609,8 +609,8 @@ async def make_enhanced_prediction(
             logger.info(f"Cache hit for {currency} prediction")
             return EnhancedPredictionResponse(**cached_data)
     try:
-        # Make prediction (patched to use make_prediction)
-        prediction_result = await prediction_pipeline.make_prediction(
+        # Make prediction and save to database
+        prediction_result = await prediction_pipeline.make_and_save_prediction(
             currency=currency,
             model_type=request.model_type
         )
@@ -790,3 +790,54 @@ async def make_basic_prediction(currency: str):
         request=PredictionRequest(),
         background_tasks=BackgroundTasks()
     ) 
+
+@app.get("/predictions/{currency}/history")
+async def get_prediction_history(
+    currency: str,
+    days: int = 30,
+    limit: int = 100
+):
+    """Get historical predictions for a currency"""
+    try:
+        # Get predictions from database
+        predictions = await db_manager.get_predictions(currency, days, limit)
+        
+        return {
+            "currency": currency,
+            "predictions": predictions,
+            "count": len(predictions),
+            "days": days
+        }
+    except Exception as e:
+        logger.error(f"Error fetching prediction history for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching prediction history")
+
+@app.get("/predictions/accuracy/{currency}")
+async def get_prediction_accuracy(currency: str, days: int = 30):
+    """Get prediction accuracy metrics for a currency"""
+    try:
+        # Get predictions and calculate accuracy
+        predictions = await db_manager.get_predictions(currency, days, 1000)
+        
+        if not predictions:
+            return {
+                "currency": currency,
+                "accuracy": 0,
+                "total_predictions": 0,
+                "correct_predictions": 0
+            }
+        
+        # Calculate accuracy (this would need actual price data to compare)
+        # For now, return basic stats
+        return {
+            "currency": currency,
+            "total_predictions": len(predictions),
+            "recent_predictions": predictions[:10],  # Last 10 predictions
+            "prediction_distribution": {
+                "up": len([p for p in predictions if p.get("predicted_direction") == "UP"]),
+                "down": len([p for p in predictions if p.get("predicted_direction") == "DOWN"])
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error calculating prediction accuracy for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Error calculating prediction accuracy") 

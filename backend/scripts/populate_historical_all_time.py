@@ -111,8 +111,7 @@ class AllTimeDataPopulator:
                     historical_data = await self.price_fetcher.get_historical_prices(
                         symbol, 
                         interval="1d", 
-                        limit=records_in_chunk,
-                        end_time=int(end_time.timestamp() * 1000)  # Convert to milliseconds
+                        limit=records_in_chunk
                     )
                     
                     if not historical_data:
