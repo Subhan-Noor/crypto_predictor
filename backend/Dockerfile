@@ -33,11 +33,10 @@ COPY backend/ml ./ml
 COPY backend/models ./models
 COPY backend/config.py .
 COPY backend/run.py .
-COPY backend/startup_debug.py .
-COPY backend/health_check.py .
+# Removed: COPY backend/startup_debug.py .
+# Removed: COPY backend/health_check.py .
 
-# Run startup debug script to test imports
-RUN python startup_debug.py
+# Removed: RUN python startup_debug.py
 
 # If you need any other files, add COPY lines here
 
@@ -46,9 +45,9 @@ RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-# Health check
+# Health check (use FastAPI /health endpoint instead of missing script)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python health_check.py || exit 1
+    CMD curl --fail http://localhost:8000/health || exit 1
 
 # Expose port
 EXPOSE 8000
