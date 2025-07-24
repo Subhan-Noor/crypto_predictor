@@ -10,7 +10,7 @@ This module handles:
 
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional
 import sys
 import os
@@ -34,19 +34,19 @@ class CryptoDataPreprocessor:
         self.prediction_horizon = prediction_horizon
         self.feature_window = 14  # Days of historical data for features
         self.min_data_points = 30  # Minimum data points needed for training
-        
+    
     async def load_data(self, currency: str, start_date: Optional[datetime] = None, 
                        end_date: Optional[datetime] = None) -> Dict[str, pd.DataFrame]:
         """
-        Load price and sentiment data from database
+        Load price and sentiment data for a currency
         
         Args:
-            currency: 'BTC' or 'ETH'
-            start_date: Start date for data (optional)
-            end_date: End date for data (optional)
+            currency: Currency code (BTC/ETH)
+            start_date: Start date for data loading
+            end_date: End date for data loading
             
         Returns:
-            Dictionary containing 'prices' and 'sentiment' DataFrames
+            Dictionary with 'prices' and 'sentiment' DataFrames
         """
         logger.info(f"Loading data for {currency}")
         
@@ -79,21 +79,27 @@ class CryptoDataPreprocessor:
                 for record in sentiment_records
             ])
             
-            # Convert date columns to datetime
+            # Convert date columns to datetime and ensure timezone consistency
             if not prices_df.empty:
-                prices_df['date'] = pd.to_datetime(prices_df['date'])
+                prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True)
                 prices_df = prices_df.sort_values('date').reset_index(drop=True)
                 
             if not sentiment_df.empty:
-                sentiment_df['date'] = pd.to_datetime(sentiment_df['date'])
+                sentiment_df['date'] = pd.to_datetime(sentiment_df['date'], utc=True)
                 sentiment_df = sentiment_df.sort_values('date').reset_index(drop=True)
             
+            # Ensure start_date and end_date are timezone-aware
+            if start_date and start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            if end_date and end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+            
             # Filter by date range if provided
-            if start_date:
+            if start_date and not prices_df.empty:
                 prices_df = prices_df[prices_df['date'] >= start_date]
                 sentiment_df = sentiment_df[sentiment_df['date'] >= start_date]
                 
-            if end_date:
+            if end_date and not prices_df.empty:
                 prices_df = prices_df[prices_df['date'] <= end_date]
                 sentiment_df = sentiment_df[sentiment_df['date'] <= end_date]
             

@@ -1,8 +1,0 @@
-{
-  "BTC": {
-    "error": "X has 28 features, but StandardScaler is expecting 63 features as input."
-  },
-  "ETH": {
-    "error": "X has 28 features, but StandardScaler is expecting 63 features as input."
-  }
-}
