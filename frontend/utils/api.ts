@@ -13,6 +13,8 @@ import {
 // API Base Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cryptopredictor-production.up.railway.app'
 
+console.log('🔗 API Base URL:', API_BASE_URL)
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
@@ -39,7 +41,24 @@ apiClient.interceptors.response.use(
     return response
   },
   (error) => {
-    console.error('API Response Error:', error.response?.data || error.message)
+    console.error('API Response Error:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      url: error.config?.url,
+      method: error.config?.method
+    })
+    
+    // Provide more specific error messages
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.error('❌ Backend connection failed. Please check if the backend is running.')
+    } else if (error.response?.status === 502) {
+      console.error('❌ Backend server error (502). The backend may be down or deploying.')
+    } else if (error.response?.status === 404) {
+      console.error('❌ API endpoint not found (404). Check the endpoint URL.')
+    }
+    
     return Promise.reject(error)
   }
 )

@@ -27,12 +27,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN apt-get purge -y --auto-remove libpq-dev build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy application files
 COPY backend/app ./app
 COPY backend/ml ./ml
 COPY backend/models ./models
 COPY backend/config.py .
 COPY backend/run.py .
+COPY backend/startup_debug.py .
+COPY backend/health_check.py .
+
+# Run startup debug script to test imports
+RUN python startup_debug.py
 
 # If you need any other files, add COPY lines here
 
@@ -43,7 +48,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python health_check.py || exit 1
 
 # Expose port
 EXPOSE 8000

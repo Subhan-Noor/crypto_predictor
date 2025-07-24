@@ -39,7 +39,7 @@ from .services.sentiment_analyzer import sentiment_analyzer
 from .services.background_tasks import BackgroundTaskService
 from .services.websocket_service import websocket_service
 from .services.cache_service import cache_service
-from .middleware.rate_limiter import rate_limit_middleware
+from .middleware.rate_limiter import rate_limit_middleware, rate_limiter
 
 # Database and ML imports
 from .database import db_manager

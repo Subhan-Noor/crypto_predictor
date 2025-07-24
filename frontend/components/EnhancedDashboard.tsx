@@ -6,6 +6,7 @@ import { PredictionCard } from './PredictionCard'
 import { PriceChart } from './PriceChart'
 import { DataRangeSelector, TimeRange, TIME_RANGES } from './DataRangeSelector'
 import { ErrorBoundary } from './ErrorBoundary'
+import { ConnectionTest } from './ConnectionTest'
 import { 
   NoDataState, 
   NoPredictionsState, 
@@ -345,6 +346,9 @@ export const EnhancedDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Connection Test */}
+        <ConnectionTest />
 
         {/* Status Banner */}
         {hasErrors && (
