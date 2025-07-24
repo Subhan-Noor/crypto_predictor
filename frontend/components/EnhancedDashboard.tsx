@@ -207,8 +207,12 @@ export const EnhancedDashboard: React.FC = () => {
       const currencies: Currency[] = ['BTC', 'ETH']
       const pricePromises = currencies.map(async (currency) => {
         try {
+          let limit: number | undefined = 100
+          if (timeRange.value === 'ALL') limit = 10000
+          else if (timeRange.value === '1Y') limit = 366
+          else limit = timeRange.days || 100
           const daysParam = timeRange.value === 'ALL' ? undefined : timeRange.days
-          const response = await apiService.getPriceData(currency, 1, 1000, daysParam)
+          const response = await apiService.getPriceData(currency, 1, limit, daysParam)
           return { currency, data: response.data || [] }
         } catch (err) {
           // Only fallback to mock data for non-ALL time ranges
@@ -309,17 +313,6 @@ export const EnhancedDashboard: React.FC = () => {
           </div>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            {/* Time Range Selector */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-400 whitespace-nowrap">Time Range:</span>
-              <DataRangeSelector
-                selectedRange={state.selectedTimeRange}
-                onRangeChange={handleTimeRangeChange}
-                variant="dropdown"
-                className="min-w-32"
-              />
-            </div>
-            
             {/* Control Buttons */}
             <div className="flex items-center space-x-2">
               <button
