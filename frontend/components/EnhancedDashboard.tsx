@@ -160,6 +160,7 @@ export const EnhancedDashboard: React.FC = () => {
   }, [updateLoadingState, updateErrorState])
 
   const loadPriceData = useCallback(async (timeRange: TimeRange) => {
+    console.log('Loading price data for time range:', timeRange)
     updateLoadingState('charts', true)
     updateErrorState('charts', null)
     
@@ -167,7 +168,9 @@ export const EnhancedDashboard: React.FC = () => {
       const currencies: Currency[] = ['BTC', 'ETH']
       const pricePromises = currencies.map(async (currency) => {
         try {
+          console.log(`Fetching ${currency} data for ${timeRange.days} days`)
           const response = await apiService.getPriceData(currency, 1, 100, timeRange.days)
+          console.log(`${currency} data received:`, response.data?.length || 0, 'records')
           return { currency, data: response.data || [] }
         } catch (err) {
           console.error(`Failed to load price data for ${currency}:`, err)
@@ -194,6 +197,7 @@ export const EnhancedDashboard: React.FC = () => {
         return acc
       }, {} as Record<Currency, PriceData[]>)
 
+      console.log('Final price data:', priceDataMap)
       setState(prev => ({ ...prev, priceData: priceDataMap }))
     } catch (err) {
       console.error('Failed to load price data:', err)
@@ -204,7 +208,14 @@ export const EnhancedDashboard: React.FC = () => {
   }, [updateLoadingState, updateErrorState])
 
   const handleTimeRangeChange = useCallback((timeRange: TimeRange) => {
-    setState(prev => ({ ...prev, selectedTimeRange: timeRange }))
+    console.log('Time range changed to:', timeRange)
+    setState(prev => ({ 
+      ...prev, 
+      selectedTimeRange: timeRange,
+      priceData: { BTC: [], ETH: [] }, // Clear existing data
+      loading: { ...prev.loading, charts: true } // Set loading state
+    }))
+    // Load new data with the updated time range
     loadPriceData(timeRange)
   }, [loadPriceData])
 

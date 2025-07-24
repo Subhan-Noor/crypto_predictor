@@ -1,629 +1,469 @@
-from fastapi import FastAPI, HTTPException, Depends
+# Enhanced FastAPI application with improved date filtering
+"""
+Crypto Price Prediction API with enhanced date filtering
+
+This module provides:
+- Improved date filtering for time ranges
+- Better error handling and validation
+- Enhanced response formatting
+"""
+
+import asyncio
+import logging
+import time
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+from decimal import Decimal
+import uuid
+import pytz
+from dateutil import parser as date_parser
+
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Any
-import sys
-import os
-from dateutil.parser import parse as parse_date
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from fastapi.encoders import jsonable_encoder
 
-# Add the parent directory to sys.path to import config
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import settings
-
+# Import existing services
 from .database import db_manager
-from .services.twitter_service import TwitterScraper
-from .services.reddit_service import RedditScraper
 from .services.binance_service import BinancePriceFetcher
-from .models.crypto_models import PredictionRequest, PredictionResponse, DataStatusResponse, HealthResponse
 
-# Import ML components for Stage 3
+# Import models
+from .models.api_models import (
+    PaginationParams, DateRangeFilter, PriceFilter, SentimentFilter,
+    EnhancedPriceResponse, EnhancedSentimentResponse, EnhancedPredictionResponse,
+    PredictionRequest, APIHealthStatus, EnhancedErrorResponse
+)
+
+# Import ML components
 from ml.prediction_pipeline import CryptoPredictionPipeline
 
+# Import configuration
+from config import settings
+
+# Configure logging
+logging.basicConfig(level=getattr(logging, settings.log_level))
+logger = logging.getLogger(__name__)
+
+# Initialize services
+binance_service = BinancePriceFetcher()
+prediction_pipeline = CryptoPredictionPipeline()
+
+# Create FastAPI app
 app = FastAPI(
     title="Crypto Price Prediction API",
-    description="API for cryptocurrency price prediction using ML models",
-    version="1.0.0"
+    description="API for cryptocurrency price predictions with enhanced date filtering",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Add CORS middleware
-allowed_origins = [
-    "http://localhost:3000", 
-    "http://127.0.0.1:3000",
-    "https://localhost:3000"
-]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Add production origins
-if settings.environment == "production":
-    # Add your actual Vercel domain(s) here
-    allowed_origins.extend([
-        "https://crypto-predictor-6gijqgqtd-subhan-noors-projects.vercel.app",  # Current Vercel domain
-        "https://crypto-predictor-one.vercel.app",  # Alternative Vercel domain
-        "https://cryptopredictor-production.up.railway.app",  # Backend self-origin for health checks
-    ])
-else:
-    # In development, also allow the Railway backend domain for testing
-    allowed_origins.extend([
-        "https://cryptopredictor-production.up.railway.app"
-    ])
-
-# For maximum compatibility, also allow all Vercel domains in production
-if settings.environment == "production":
-    # Use origin function to allow all Vercel subdomains
-    def custom_origin_handler(origin: str) -> bool:
-        # Allow local development
-        if origin in ["http://localhost:3000", "http://127.0.0.1:3000", "https://localhost:3000"]:
-            return True
-        # Allow specific domains
-        if origin in allowed_origins:
-            return True
-        # Allow any Vercel deployment
-        if origin and ".vercel.app" in origin:
-            return True
-        return False
+# Enhanced date filtering function
+def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List[Dict]:
+    """Apply date filtering to records (robust for bad/missing dates)"""
+    if not date_filter.start_date and not date_filter.end_date and not date_filter.days:
+        return records
     
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"https://.*\.vercel\.app",
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    filtered_records = []
+    skipped = 0
+    current_time = datetime.now(pytz.UTC)
+    
+    def to_utc(dt):
+        if dt is None:
+            return None
+        if isinstance(dt, str):
+            try:
+                dt = date_parser.parse(dt)
+            except Exception:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=pytz.UTC)
+        else:
+            dt = dt.astimezone(pytz.UTC)
+        return dt
+    
+    start = to_utc(date_filter.start_date)
+    end = to_utc(date_filter.end_date)
+    
+    # Calculate date range based on days parameter
+    if date_filter.days and not start and not end:
+        end = current_time
+        start = current_time - timedelta(days=date_filter.days)
+    
+    for record in records:
+        record_date = record.get("date")
+        record_date_utc = to_utc(record_date)
+        if not record_date_utc:
+            skipped += 1
+            continue
+        
+        include_record = True
+        
+        # Check start date
+        if start and record_date_utc < start:
+            include_record = False
+        
+        # Check end date
+        if end and record_date_utc > end:
+            include_record = False
+        
+        if include_record:
+            filtered_records.append(record)
+    
+    if skipped > 0:
+        logger.warning(f"apply_date_filter: Skipped {skipped} records with bad/missing dates out of {len(records)} total.")
+    
+    # Sort by date (newest first)
+    filtered_records.sort(key=lambda x: x.get("date", ""), reverse=True)
+    
+    return filtered_records
 
-# Initialize services
-twitter_scraper = TwitterScraper()
-reddit_scraper = RedditScraper()
-binance_fetcher = BinancePriceFetcher()
-
-# Initialize ML prediction pipeline
-prediction_pipeline = CryptoPredictionPipeline()
-
-
-@app.get("/")
-async def read_root():
-    """Health check endpoint"""
+def create_pagination_info(page: int, limit: int, total_items: int) -> Dict[str, Any]:
+    """Create pagination information"""
+    total_pages = (total_items + limit - 1) // limit
     return {
-        "message": "Crypto Price Prediction API is up and running!",
-        "timestamp": datetime.now().isoformat(),
-        "database_connected": db_manager.is_connected()
+        "page": page,
+        "limit": limit,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1
     }
 
+def paginate_data(data: List[Dict], page: int, limit: int, sort_by: str = "date", sort_order: str = "desc") -> tuple:
+    """Paginate and sort data"""
+    # Sort data
+    reverse = sort_order.lower() == "desc"
+    data.sort(key=lambda x: x.get(sort_by, ""), reverse=reverse)
+    
+    # Calculate pagination
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_data = data[start_idx:end_idx]
+    
+    return paginated_data, len(data)
+
+# Enhanced error handlers
+@app.exception_handler(HTTPException)
+async def enhanced_http_exception_handler(request: Request, exc: HTTPException):
+    """Enhanced error handling with detailed responses"""
+    error_id = str(uuid.uuid4())[:8]
+    error_response = EnhancedErrorResponse(
+        error="HTTP Exception",
+        error_code=f"HTTP_{exc.status_code}",
+        message=exc.detail,
+        timestamp=datetime.now(),
+        path=request.url.path,
+        method=request.method,
+        request_id=error_id
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=jsonable_encoder(error_response),
+        headers={"X-Request-ID": error_id}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Enhanced validation error handler"""
+    validation_errors = []
+    for error in exc.errors():
+        validation_errors.append({
+            "field": " -> ".join(str(loc) for loc in error["loc"]),
+            "message": error["msg"],
+            "invalid_value": error.get("input")
+        })
+    
+    error_id = str(uuid.uuid4())[:8]
+    error_response = EnhancedErrorResponse(
+        error="Validation Error",
+        error_code="VALIDATION_ERROR",
+        message="Request validation failed",
+        timestamp=datetime.now(),
+        path=request.url.path,
+        method=request.method,
+        request_id=error_id,
+        details=validation_errors
+    )
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder(error_response),
+        headers={"X-Request-ID": error_id}
+    )
+
+# Enhanced endpoints
+@app.get("/", response_model=APIHealthStatus)
+async def root():
+    """Root endpoint with health status"""
+    start_time = time.time()
+    
+    # Check database connection
+    db_status = "healthy"
+    try:
+        await db_manager.test_connection()
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    response_time = (time.time() - start_time) * 1000
+    
+    return APIHealthStatus(
+        status="healthy",
+        timestamp=datetime.now(),
+        version="1.0.0",
+        environment=settings.environment,
+        services={
+            "database": {"status": db_status},
+        },
+        performance_metrics={
+            "response_time_ms": round(response_time, 2)
+        }
+    )
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
-    try:
-        # Test database connection
-        db_status = db_manager.is_connected()
-        
-        # Get basic stats
-        btc_count = len(await db_manager.get_records('crypto_prices', {'currency': 'BTC'}))
-        eth_count = len(await db_manager.get_records('crypto_prices', {'currency': 'ETH'}))
-        
-        return {
-            "status": "healthy" if db_status else "unhealthy",
-            "timestamp": datetime.now().isoformat(),
-            "database": {
-                "connected": db_status,
-                "btc_records": btc_count,
-                "eth_records": eth_count
-            },
-            "services": {
-                "binance_api": "available",
-                "twitter_scraper": "available",
-                "reddit_scraper": "available"
-            }
+    """Health check endpoint"""
+    health_data = {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "database": {
+            "connected": db_manager.is_connected(),
+            "btc_records": 0,
+            "eth_records": 0
+        },
+        "services": {
+            "binance_api": "available",
+            "twitter_scraper": "unavailable",
+            "reddit_scraper": "unavailable"
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
-
-
-@app.get("/prices/{currency}")
-async def get_prices(currency: str, days: int = 30):
-    """Get historical price data for a currency"""
-    try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=days)
-        records = await db_manager.get_records('crypto_prices', {
-            'currency': currency.upper()
-        })
-        filtered_records = []
-        for record in records:
-            record_date = record['date']
-            if isinstance(record_date, str):
-                try:
-                    record_date = datetime.fromisoformat(record_date)
-                    if record_date.tzinfo is None:
-                        record_date = record_date.replace(tzinfo=timezone.utc)
-                except Exception:
-                    try:
-                        record_date = parse_date(record_date)
-                        if record_date.tzinfo is None:
-                            record_date = record_date.replace(tzinfo=timezone.utc)
-                    except Exception:
-                        continue
-            if record_date.tzinfo is None:
-                record_date = record_date.replace(tzinfo=timezone.utc)
-            if start_date <= record_date <= end_date:
-                filtered_records.append({
-                    'date': record['date'],
-                    'open': float(record['open']),
-                    'high': float(record['high']),
-                    'low': float(record['low']),
-                    'close': float(record['close']),
-                    'volume': float(record['volume'])
-                })
-        filtered_records.sort(key=lambda x: x['date'])
-        return {
-            "currency": currency.upper(),
-            "data": filtered_records,
-            "count": len(filtered_records)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching prices: {str(e)}")
-
-
-@app.get("/sentiment/{currency}")
-async def get_sentiment(currency: str, days: int = 30):
-    """Get historical sentiment data for a currency"""
-    try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=days)
-        records = await db_manager.get_records('crypto_sentiment', {
-            'currency': currency.upper()
-        })
-        filtered_records = []
-        for record in records:
-            record_date = record['date']
-            if isinstance(record_date, str):
-                try:
-                    record_date = datetime.fromisoformat(record_date)
-                    if record_date.tzinfo is None:
-                        record_date = record_date.replace(tzinfo=timezone.utc)
-                except Exception:
-                    try:
-                        record_date = parse_date(record_date)
-                        if record_date.tzinfo is None:
-                            record_date = record_date.replace(tzinfo=timezone.utc)
-                    except Exception:
-                        continue
-            if record_date.tzinfo is None:
-                record_date = record_date.replace(tzinfo=timezone.utc)
-            if start_date <= record_date <= end_date:
-                filtered_records.append({
-                    'date': record['date'],
-                    'twitter_sentiment': float(record['twitter_sentiment']) if record['twitter_sentiment'] else None,
-                    'reddit_sentiment': float(record['reddit_sentiment']) if record['reddit_sentiment'] else None
-                })
-        filtered_records.sort(key=lambda x: x['date'])
-        return {
-            "currency": currency.upper(),
-            "data": filtered_records,
-            "count": len(filtered_records)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching sentiment: {str(e)}")
-
-
-@app.get("/current_prices")
-async def get_current_prices():
-    """Get current prices for BTC and ETH"""
-    try:
-        # Fetch current prices with fallback handling
-        btc_price = await binance_fetcher.get_current_price('BTCUSDT')
-        eth_price = await binance_fetcher.get_current_price('ETHUSDT')
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "BTC": btc_price,
-            "ETH": eth_price
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching current prices: {str(e)}")
-
-
-@app.get("/data_status")
-async def get_data_status():
-    """Get status of available data in the database"""
-    try:
-        status = {}
-        
-        for currency in ['BTC', 'ETH']:
-            # Get price data stats
-            price_records = await db_manager.get_records('crypto_prices', {'currency': currency})
-            sentiment_records = await db_manager.get_records('crypto_sentiment', {'currency': currency})
-            
-            latest_price_date = None
-            latest_sentiment_date = None
-            
-            if price_records:
-                dates = [r['date'] for r in price_records]
-                latest_price_date = max(dates)
-            
-            if sentiment_records:
-                dates = [r['date'] for r in sentiment_records]
-                latest_sentiment_date = max(dates)
-            
-            status[currency] = {
-                "price_records": len(price_records),
-                "sentiment_records": len(sentiment_records),
-                "latest_price_date": latest_price_date,
-                "latest_sentiment_date": latest_sentiment_date
-            }
-        
-        return status
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching data status: {str(e)}")
-
-
-# ===== STAGE 3: ML PREDICTION ENDPOINTS =====
-
-class FlexiblePredictionRequest(BaseModel):
-    prediction_horizon: Optional[int] = 7
-    model_type: Optional[str] = "best"
-    # Add any other fields as optional if needed
-
-@app.post("/predict/{currency}", response_model=PredictionResponse)
-async def make_prediction(currency: str, request: FlexiblePredictionRequest):
-    """
-    Make a price prediction for a cryptocurrency
+    }
     
-    This endpoint uses trained ML models to predict if the price will go UP or DOWN
-    over the specified prediction horizon (default: 7 days).
-    """
+    # Get record counts if connected
+    if db_manager.is_connected():
+        try:
+            btc_data = await db_manager.get_crypto_prices("BTC", limit=1)
+            eth_data = await db_manager.get_crypto_prices("ETH", limit=1)
+            health_data["database"]["btc_records"] = len(btc_data) if btc_data else 0
+            health_data["database"]["eth_records"] = len(eth_data) if eth_data else 0
+        except Exception as e:
+            logger.error(f"Error getting record counts: {e}")
+    
+    return health_data
+
+@app.get("/prices/{currency}", response_model=EnhancedPriceResponse)
+async def get_enhanced_prices(
+    currency: str,
+    days: Optional[int] = 30,  # Direct days parameter for frontend compatibility
+    start_date: Optional[str] = None,  # Optional start_date as string
+    end_date: Optional[str] = None,    # Optional end_date as string
+    pagination: PaginationParams = Depends(),
+    price_filter: PriceFilter = Depends()
+):
+    """Enhanced price endpoint with improved date filtering"""
+    start_time = time.time()
+    
+    # Create DateRangeFilter from query parameters
     try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        date_filter = DateRangeFilter(
+            days=days,
+            start_date=datetime.fromisoformat(start_date) if start_date else None,
+            end_date=datetime.fromisoformat(end_date) if end_date else None
+        )
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        date_filter = DateRangeFilter(days=days or 30)
+    
+    # Fetch from database
+    try:
+        prices_data = await db_manager.get_crypto_prices(currency, limit=1000)
+        if not prices_data:
+            raise HTTPException(status_code=404, detail=f"No price data found for {currency}")
         
-        # Use the prediction horizon from request, default to 7 days
-        prediction_horizon = request.prediction_horizon or 7
-        model_type = request.model_type or "best"
+        filtered_data = apply_date_filter(prices_data, date_filter)
+        if not filtered_data:
+            logger.warning(f"No valid price records for {currency} after date filtering.")
+            raise HTTPException(status_code=404, detail=f"No valid price data found for {currency} (bad/missing dates?)")
         
-        # Make prediction using the best available model
-        prediction_result = await prediction_pipeline.make_prediction(
-            currency=currency.upper(),
-            model_type=model_type
+        # Apply price filtering
+        if price_filter.min_price or price_filter.max_price or price_filter.min_volume or price_filter.max_volume:
+            price_filtered = []
+            for record in filtered_data:
+                include = True
+                
+                if price_filter.min_price and record.get("close", 0) < float(price_filter.min_price):
+                    include = False
+                if price_filter.max_price and record.get("close", 0) > float(price_filter.max_price):
+                    include = False
+                if price_filter.min_volume and record.get("volume", 0) < float(price_filter.min_volume):
+                    include = False
+                if price_filter.max_volume and record.get("volume", 0) > float(price_filter.max_volume):
+                    include = False
+                
+                if include:
+                    price_filtered.append(record)
+            filtered_data = price_filtered
+        
+        # Paginate data
+        paginated_data, total_items = paginate_data(
+            filtered_data, 
+            pagination.page, 
+            pagination.limit, 
+            pagination.sort_by, 
+            pagination.sort_order
         )
         
-        # Save prediction to database
-        prediction_id = await prediction_pipeline.save_prediction(prediction_result)
-        prediction_result['id'] = prediction_id
+        # Create pagination info
+        pagination_info = create_pagination_info(pagination.page, pagination.limit, total_items)
         
-        # Format response
-        response = PredictionResponse(
-            currency=currency.upper(),
-            prediction_date=datetime.now().isoformat(),
-            prediction_horizon=prediction_horizon,
-            predicted_direction=prediction_result['predicted_direction'],
-            confidence_score=prediction_result['confidence_score'],
-            model_version=prediction_result['model_version']
+        # Calculate price summary
+        if paginated_data:
+            prices = [float(record.get("close", 0)) for record in paginated_data]
+            volumes = [float(record.get("volume", 0)) for record in paginated_data]
+            
+            price_summary = {
+                "min_price": min(prices),
+                "max_price": max(prices),
+                "avg_price": sum(prices) / len(prices),
+                "min_volume": min(volumes),
+                "max_volume": max(volumes),
+                "avg_volume": sum(volumes) / len(volumes)
+            }
+        else:
+            price_summary = {}
+        
+        # Create response
+        response = EnhancedPriceResponse(
+            currency=currency,
+            data=paginated_data,
+            pagination=pagination_info,
+            total_items=total_items,
+            date_range={
+                "start_date": paginated_data[-1]["date"] if paginated_data else None,
+                "end_date": paginated_data[0]["date"] if paginated_data else None
+            },
+            price_summary=price_summary,
+            count=len(paginated_data)
         )
+        
+        response_time = (time.time() - start_time) * 1000
+        logger.info(f"Enhanced prices for {currency}: {len(paginated_data)} records in {response_time:.2f}ms")
         
         return response
         
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error making prediction: {str(e)}")
+        logger.error(f"Error fetching enhanced prices for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-
-@app.get("/predictions/{currency}")
-async def get_predictions(currency: str, days: int = 30):
-    """
-    Get recent predictions for a cryptocurrency
-    
-    Returns historical predictions made by the ML models, useful for
-    tracking prediction accuracy over time.
-    """
+@app.get("/current_prices")
+async def get_current_prices():
+    """Get current prices for all supported currencies"""
     try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
+        currencies = ["BTC", "ETH"]
+        current_prices = {}
         
-        # Get recent predictions
-        predictions = await prediction_pipeline.get_recent_predictions(
-            currency=currency.upper(),
-            days=days
+        for currency in currencies:
+            try:
+                # Get latest price data
+                price_data = await db_manager.get_crypto_prices(currency, limit=1)
+                if price_data and len(price_data) > 0:
+                    latest = price_data[0]
+                    current_prices[currency] = {
+                        "currency": currency,
+                        "price": float(latest.get("close", 0)),
+                        "change_24h": 0.0,  # Placeholder
+                        "change_percentage_24h": 0.0,  # Placeholder
+                        "volume": float(latest.get("volume", 0)),
+                        "high_24h": float(latest.get("high", 0)),
+                        "low_24h": float(latest.get("low", 0)),
+                        "last_updated": latest.get("date")
+                    }
+                else:
+                    current_prices[currency] = {
+                        "currency": currency,
+                        "price": 0.0,
+                        "change_24h": 0.0,
+                        "change_percentage_24h": 0.0,
+                        "volume": 0.0,
+                        "high_24h": 0.0,
+                        "low_24h": 0.0,
+                        "last_updated": None
+                    }
+            except Exception as e:
+                logger.error(f"Error fetching current price for {currency}: {e}")
+                current_prices[currency] = {
+                    "currency": currency,
+                    "price": 0.0,
+                    "change_24h": 0.0,
+                    "change_percentage_24h": 0.0,
+                    "volume": 0.0,
+                    "high_24h": 0.0,
+                    "low_24h": 0.0,
+                    "last_updated": None
+                }
+        
+        return current_prices
+        
+    except Exception as e:
+        logger.error(f"Error fetching current prices: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/predict/{currency}", response_model=EnhancedPredictionResponse)
+async def make_prediction(currency: str, request: PredictionRequest):
+    """Make prediction for a currency"""
+    try:
+        # Make prediction using the pipeline
+        prediction_result = await prediction_pipeline.make_prediction(
+            currency=currency,
+            model_type=request.model_type
         )
         
-        return {
-            "currency": currency.upper(),
-            "predictions": predictions,
-            "count": len(predictions)
-        }
+        # Save prediction to database
+        await prediction_pipeline.save_prediction(prediction_result)
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching predictions: {str(e)}")
-
-
-@app.get("/prediction_accuracy/{currency}")
-async def get_prediction_accuracy(currency: str, days: int = 30):
-    """
-    Evaluate the accuracy of recent predictions
-    
-    Compares predictions with actual price movements to calculate
-    accuracy metrics and model performance statistics.
-    """
-    try:
-        if currency.upper() not in ['BTC', 'ETH']:
-            raise HTTPException(status_code=400, detail="Currency must be BTC or ETH")
-        
-        # Evaluate prediction accuracy
-        accuracy_results = await prediction_pipeline.evaluate_prediction_accuracy(
-            currency=currency.upper(),
-            days=days
+        return EnhancedPredictionResponse(
+            currency=currency,
+            predicted_direction=prediction_result["prediction"],
+            confidence_score=prediction_result["confidence"],
+            prediction_date=prediction_result["target_date"],
+            features_importance=prediction_result.get("features", {}),
+            model_type=request.model_type
         )
         
-        return {
-            "currency": currency.upper(),
-            "accuracy_metrics": accuracy_results,
-            "model_performance": {} # Placeholder, actual model performance will be added later
-        }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error evaluating prediction accuracy: {str(e)}")
+        logger.error(f"Error making prediction for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-
-@app.post("/predictions/daily")
-async def make_daily_predictions():
-    """
-    Generate daily predictions for both BTC and ETH
-    
-    This endpoint can be called daily (e.g., via cron job) to generate
-    fresh predictions using the latest available data.
-    """
+@app.get("/sentiment/{currency}", response_model=EnhancedSentimentResponse)
+async def get_sentiment(currency: str, days: int = 30):
+    """Get sentiment data for a currency"""
     try:
-        results = await prediction_pipeline.make_daily_predictions()
+        sentiment_data = await db_manager.get_crypto_sentiment(currency, limit=1000)
+        if not sentiment_data:
+            raise HTTPException(status_code=404, detail=f"No sentiment data found for {currency}")
         
-        return {
-            "message": "Daily predictions completed",
-            "timestamp": datetime.now().isoformat(),
-            "results": results
-        }
+        # Create date filter
+        date_filter = DateRangeFilter(days=days)
+        filtered_data = apply_date_filter(sentiment_data, date_filter)
         
+        return EnhancedSentimentResponse(
+            currency=currency,
+            data=filtered_data,
+            count=len(filtered_data)
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error making daily predictions: {str(e)}")
-
-
-@app.get("/models/status")
-async def get_model_status():
-    """
-    Get status of available trained models
-    
-    Returns information about which models are available for each currency,
-    their training dates, and performance metrics.
-    """
-    try:
-        import glob
-        import os
-        from ..ml.model_trainer import CryptoModelTrainer
-        
-        model_trainer = CryptoModelTrainer()
-        models_dir = "models"
-        
-        if not os.path.exists(models_dir):
-            return {"message": "No models directory found"}
-        
-        status = {}
-        
-        for currency in ['BTC', 'ETH']:
-            status[currency] = {
-                "available_models": [],
-                "latest_models": {}
-            }
-            
-            # Find model files for this currency
-            pattern = os.path.join(models_dir, f"{currency}_*.pkl")
-            model_files = glob.glob(pattern)
-            
-            for model_file in model_files:
-                model_name = os.path.basename(model_file).replace(f"{currency}_", "").replace(".pkl", "")
-                status[currency]["available_models"].append(model_name)
-                
-                # Get model info
-                try:
-                    model_info = model_trainer.load_model_info(model_file)
-                    status[currency]["latest_models"][model_name] = model_info
-                except:
-                    status[currency]["latest_models"][model_name] = {"status": "loaded"}
-        
-        return {
-            "models_directory": models_dir,
-            "currencies": status,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting model status: {str(e)}")
-
-
-# ===== STAGE 6: AUTOMATION MONITORING ENDPOINTS =====
-
-@app.get("/automation/status")
-async def get_automation_status():
-    """
-    Get the current status of the automation pipeline
-    
-    Returns health information about:
-    - Database connectivity
-    - Recent data availability  
-    - ML models availability
-    - Recent predictions
-    """
-    try:
-        from scripts.daily_automation import AutomationManager
-        
-        # Run a quick health check
-        automation = AutomationManager()
-        health_result = await automation.run_health_check()
-        
-        # Get additional status information
-        status_info = {
-            "timestamp": datetime.now().isoformat(),
-            "database_connected": db_manager.is_connected(),
-            "health_check": health_result,
-            "environment": "production" if not settings.debug else "development"
-        }
-        
-        # Add recent predictions count
-        try:
-            recent_predictions_btc = await prediction_pipeline.get_recent_predictions("BTC", days=7)
-            recent_predictions_eth = await prediction_pipeline.get_recent_predictions("ETH", days=7)
-            
-            status_info["recent_predictions"] = {
-                "BTC": len(recent_predictions_btc) if recent_predictions_btc else 0,
-                "ETH": len(recent_predictions_eth) if recent_predictions_eth else 0,
-                "last_7_days_total": (len(recent_predictions_btc) if recent_predictions_btc else 0) + 
-                                   (len(recent_predictions_eth) if recent_predictions_eth else 0)
-            }
-        except Exception as e:
-            status_info["recent_predictions"] = {"error": str(e)}
-        
-        return status_info
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting automation status: {str(e)}")
-
-
-@app.post("/automation/trigger")
-async def trigger_automation(
-    task: str = "full",  # Options: full, data-ingestion, predictions, health-check
-    background_tasks: Optional[Any] = None
-):
-    """
-    Manually trigger automation tasks
-    
-    This endpoint allows manual triggering of automation tasks:
-    - full: Complete daily automation pipeline
-    - data-ingestion: Data ingestion only
-    - predictions: Predictions generation only
-    - health-check: Health check only
-    """
-    try:
-        if task not in ["full", "data-ingestion", "predictions", "health-check"]:
-            raise HTTPException(status_code=400, detail="Invalid task. Must be: full, data-ingestion, predictions, or health-check")
-        
-        from scripts.daily_automation import AutomationManager
-        
-        automation = AutomationManager()
-        
-        # Run the requested task
-        if task == "full":
-            result = await automation.run_full_pipeline()
-        elif task == "data-ingestion":
-            result = await automation.run_data_ingestion()
-        elif task == "predictions":
-            result = await automation.run_predictions()
-        elif task == "health-check":
-            result = await automation.run_health_check()
-        
-        return {
-            "message": f"Automation task '{task}' completed",
-            "timestamp": datetime.now().isoformat(),
-            "task": task,
-            "result": result
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error running automation task: {str(e)}")
-
-
-@app.get("/automation/history")
-async def get_automation_history(days: int = 7):
-    """
-    Get automation history and performance metrics
-    
-    Returns information about recent automation runs including:
-    - Recent predictions and their accuracy
-    - Data ingestion success rates
-    - System performance metrics
-    """
-    try:
-        # Get recent predictions for analysis
-        btc_predictions = await prediction_pipeline.get_recent_predictions("BTC", days=days)
-        eth_predictions = await prediction_pipeline.get_recent_predictions("ETH", days=days)
-        
-        # Get recent price data to check data ingestion
-        recent_btc_prices = db_manager.get_latest_prices("BTC", limit=days)
-        recent_eth_prices = db_manager.get_latest_prices("ETH", limit=days)
-        
-        # Calculate metrics
-        total_predictions = (len(btc_predictions) if btc_predictions else 0) + (len(eth_predictions) if eth_predictions else 0)
-        total_price_records = (len(recent_btc_prices) if recent_btc_prices else 0) + (len(recent_eth_prices) if recent_eth_prices else 0)
-        
-        # Expected records (2 currencies * days)
-        expected_predictions = days * 2  # Assuming daily predictions for both currencies
-        expected_price_records = days * 2  # Assuming daily price data for both currencies
-        
-        prediction_coverage = (total_predictions / expected_predictions) * 100 if expected_predictions > 0 else 0
-        data_coverage = (total_price_records / expected_price_records) * 100 if expected_price_records > 0 else 0
-        
-        history_info = {
-            "timestamp": datetime.now().isoformat(),
-            "period_days": days,
-            "predictions": {
-                "total": total_predictions,
-                "expected": expected_predictions,
-                "coverage_percentage": round(prediction_coverage, 1),
-                "by_currency": {
-                    "BTC": len(btc_predictions) if btc_predictions else 0,
-                    "ETH": len(eth_predictions) if eth_predictions else 0
-                }
-            },
-            "data_ingestion": {
-                "total_price_records": total_price_records,
-                "expected_records": expected_price_records,
-                "coverage_percentage": round(data_coverage, 1),
-                "by_currency": {
-                    "BTC": len(recent_btc_prices) if recent_btc_prices else 0,
-                    "ETH": len(recent_eth_prices) if recent_eth_prices else 0
-                }
-            },
-            "overall_health": {
-                "prediction_health": "good" if prediction_coverage >= 80 else "degraded" if prediction_coverage >= 50 else "poor",
-                "data_health": "good" if data_coverage >= 80 else "degraded" if data_coverage >= 50 else "poor"
-            }
-        }
-        
-        return history_info
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting automation history: {str(e)}")
-
-
-@app.get("/test_fallback")
-async def test_fallback():
-    """Test endpoint to verify fallback mechanisms are working"""
-    try:
-        # Test current price with fallback
-        btc_result = await binance_fetcher.get_current_price('BTCUSDT')
-        eth_result = await binance_fetcher.get_current_price('ETHUSDT')
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "btc_result": btc_result,
-            "eth_result": eth_result,
-            "fallback_working": "source" in btc_result or "source" in eth_result
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "fallback_working": False
-        }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        logger.error(f"Error fetching sentiment for {currency}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

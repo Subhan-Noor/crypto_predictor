@@ -71,10 +71,8 @@ export const apiService = {
     })
     
     if (days) {
-      const endDate = new Date()
-      const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000)
-      params.append('start_date', startDate.toISOString().split('T')[0])
-      params.append('end_date', endDate.toISOString().split('T')[0])
+      // Send days parameter directly for enhanced endpoint compatibility
+      params.append('days', days.toString())
     }
 
     const response = await apiClient.get<PaginatedResponse<PriceData>>(
@@ -96,10 +94,8 @@ export const apiService = {
     })
     
     if (days) {
-      const endDate = new Date()
-      const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000)
-      params.append('start_date', startDate.toISOString().split('T')[0])
-      params.append('end_date', endDate.toISOString().split('T')[0])
+      // Send days parameter directly for enhanced endpoint compatibility
+      params.append('days', days.toString())
     }
 
     const response = await apiClient.get<PaginatedResponse<SentimentData>>(

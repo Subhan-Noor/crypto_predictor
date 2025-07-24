@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
 import uuid
+import pytz
+from dateutil import parser as date_parser
 
 from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -176,16 +178,16 @@ def create_pagination_info(page: int, limit: int, total_items: int) -> Dict[str,
     }
 
 # PATCHED: Robust date handling for Supabase data
-from dateutil import parser as date_parser
-import pytz
 
 def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List[Dict]:
     """Apply date filtering to records (robust for bad/missing dates)"""
     if not date_filter.start_date and not date_filter.end_date and not date_filter.days:
         return records
+    
     filtered_records = []
     skipped = 0
     current_time = datetime.now(pytz.UTC)
+    
     def to_utc(dt):
         if dt is None:
             return None
@@ -199,27 +201,41 @@ def apply_date_filter(records: List[Dict], date_filter: DateRangeFilter) -> List
         else:
             dt = dt.astimezone(pytz.UTC)
         return dt
+    
     start = to_utc(date_filter.start_date)
     end = to_utc(date_filter.end_date)
+    
+    # Calculate date range based on days parameter
+    if date_filter.days and not start and not end:
+        end = current_time
+        start = current_time - timedelta(days=date_filter.days)
+    
     for record in records:
         record_date = record.get("date")
         record_date_utc = to_utc(record_date)
         if not record_date_utc:
             skipped += 1
             continue
+        
         include_record = True
+        
+        # Check start date
         if start and record_date_utc < start:
             include_record = False
+        
+        # Check end date
         if end and record_date_utc > end:
             include_record = False
-        if date_filter.days:
-            cutoff_date = current_time - timedelta(days=date_filter.days)
-            if record_date_utc < cutoff_date:
-                include_record = False
+        
         if include_record:
             filtered_records.append(record)
+    
     if skipped > 0:
         logger.warning(f"apply_date_filter: Skipped {skipped} records with bad/missing dates out of {len(records)} total.")
+    
+    # Sort by date (newest first)
+    filtered_records.sort(key=lambda x: x.get("date", ""), reverse=True)
+    
     return filtered_records
 
 def paginate_data(data: List[Dict], page: int, limit: int, sort_by: str = "date", sort_order: str = "desc") -> tuple:
