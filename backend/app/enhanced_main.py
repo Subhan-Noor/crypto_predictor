@@ -22,7 +22,7 @@ import uuid
 import pytz
 from dateutil import parser as date_parser
 
-from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -335,6 +335,7 @@ async def get_enhanced_prices(
     days: Optional[int] = 30,  # Direct days parameter for frontend compatibility
     start_date: Optional[str] = None,  # Optional start_date as string
     end_date: Optional[str] = None,    # Optional end_date as string
+    limit: int = Query(1000, ge=1, le=10000),  # Allow up to 10,000 records
     pagination: PaginationParams = Depends(),
     price_filter: PriceFilter = Depends()
 ):
@@ -366,7 +367,7 @@ async def get_enhanced_prices(
             return EnhancedPriceResponse(**cached_data)
     # Fetch from database
     try:
-        prices_data = await db_manager.get_crypto_prices(currency, limit=1000)
+        prices_data = await db_manager.get_crypto_prices(currency, limit=limit)
         if not prices_data:
             raise HTTPException(status_code=404, detail=f"No price data found for {currency}")
         filtered_data = apply_date_filter(prices_data, date_filter)
