@@ -177,25 +177,34 @@ export const apiService = {
     return response.data
   },
 
-  // Prediction Accuracy
+  // Predictions Analysis
   async getPredictionAccuracy(currency: Currency, days: number = 30): Promise<{
     currency: string;
+    accuracy: number;
     total_predictions: number;
-    recent_predictions: any[];
-    prediction_distribution: {
-      up: number;
-      down: number;
-    };
+    correct_predictions: number;
+    validated_predictions: number;
   }> {
-    const params = new URLSearchParams({
-      days: days.toString(),
-    })
-
-    const response = await apiClient.get(
-      `/predictions/accuracy/${currency}?${params.toString()}`
-    )
+    const response = await apiClient.get(`/predictions/accuracy/${currency}?days=${days}`)
     return response.data
   },
+
+  // Market Analytics
+  async getMarketAnalytics(days: number = 30): Promise<{
+    timeframe_days: number;
+    data_quality: any;
+    correlation_metrics: any;
+    volatility_metrics: any;
+    sentiment_metrics: any;
+    performance_metrics: any;
+    portfolio_insights: any;
+    timestamp: string;
+  }> {
+    const response = await apiClient.get(`/analytics/market?days=${days}`)
+    return response.data
+  },
+
+  // Manual Data Validation
 
   // Get all predictions for the predictions page
   async getAllPredictionHistory(days: number = 30): Promise<{

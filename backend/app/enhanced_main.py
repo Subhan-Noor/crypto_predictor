@@ -685,6 +685,132 @@ async def get_cache_analytics():
     """Get cache performance analytics"""
     return cache_service.get_stats()
 
+@app.get("/analytics/market")
+async def get_market_analytics(days: int = 30):
+    """Get comprehensive market analytics"""
+    try:
+        import numpy as np
+        
+        # Get price data for both currencies
+        btc_data = await db_manager.get_crypto_prices("BTC", limit=days)
+        eth_data = await db_manager.get_crypto_prices("ETH", limit=days)
+        
+        # Get sentiment data
+        btc_sentiment = await db_manager.get_crypto_sentiment("BTC", limit=days)
+        eth_sentiment = await db_manager.get_crypto_sentiment("ETH", limit=days)
+        
+        if not btc_data or not eth_data:
+            raise HTTPException(status_code=404, detail="Insufficient price data for analytics")
+        
+        # Helper function to calculate correlation
+        def calculate_correlation(x, y):
+            if len(x) != len(y) or len(x) == 0:
+                return 0.0
+            try:
+                correlation_matrix = np.corrcoef(x, y)
+                return float(correlation_matrix[0, 1]) if not np.isnan(correlation_matrix[0, 1]) else 0.0
+            except:
+                return 0.0
+        
+        # Helper function to calculate volatility
+        def calculate_volatility(prices):
+            if len(prices) < 2:
+                return 0.0
+            try:
+                returns = []
+                for i in range(1, len(prices)):
+                    if prices[i-1] > 0:
+                        ret = (prices[i] - prices[i-1]) / prices[i-1]
+                        returns.append(ret)
+                if len(returns) == 0:
+                    return 0.0
+                return float(np.std(returns))
+            except:
+                return 0.0
+        
+        # Process price data
+        btc_prices = [float(d.get("close", 0)) for d in btc_data if d.get("close")]
+        eth_prices = [float(d.get("close", 0)) for d in eth_data if d.get("close")]
+        
+        # Align data by date
+        btc_dict = {d.get("date"): float(d.get("close", 0)) for d in btc_data if d.get("date") and d.get("close")}
+        eth_dict = {d.get("date"): float(d.get("close", 0)) for d in eth_data if d.get("date") and d.get("close")}
+        
+        common_dates = sorted(set(btc_dict.keys()) & set(eth_dict.keys()))
+        aligned_btc = [btc_dict[date] for date in common_dates]
+        aligned_eth = [eth_dict[date] for date in common_dates]
+        
+        # Calculate metrics
+        price_correlation = calculate_correlation(aligned_btc, aligned_eth)
+        btc_volatility = calculate_volatility(btc_prices)
+        eth_volatility = calculate_volatility(eth_prices)
+        
+        # Calculate sentiment metrics
+        avg_btc_twitter = 0.0
+        avg_btc_reddit = 0.0
+        avg_eth_twitter = 0.0
+        avg_eth_reddit = 0.0
+        
+        if btc_sentiment:
+            twitter_scores = [float(d.get("twitter_sentiment", 0)) for d in btc_sentiment if d.get("twitter_sentiment") is not None]
+            reddit_scores = [float(d.get("reddit_sentiment", 0)) for d in btc_sentiment if d.get("reddit_sentiment") is not None]
+            avg_btc_twitter = sum(twitter_scores) / len(twitter_scores) if twitter_scores else 0.0
+            avg_btc_reddit = sum(reddit_scores) / len(reddit_scores) if reddit_scores else 0.0
+        
+        if eth_sentiment:
+            twitter_scores = [float(d.get("twitter_sentiment", 0)) for d in eth_sentiment if d.get("twitter_sentiment") is not None]
+            reddit_scores = [float(d.get("reddit_sentiment", 0)) for d in eth_sentiment if d.get("reddit_sentiment") is not None]
+            avg_eth_twitter = sum(twitter_scores) / len(twitter_scores) if twitter_scores else 0.0
+            avg_eth_reddit = sum(reddit_scores) / len(reddit_scores) if reddit_scores else 0.0
+        
+        # Calculate price changes for latest period
+        btc_price_change = ((btc_prices[0] - btc_prices[-1]) / btc_prices[-1]) * 100 if len(btc_prices) >= 2 else 0.0
+        eth_price_change = ((eth_prices[0] - eth_prices[-1]) / eth_prices[-1]) * 100 if len(eth_prices) >= 2 else 0.0
+        
+        analytics_result = {
+            "timeframe_days": days,
+            "data_quality": {
+                "btc_price_points": len(btc_data),
+                "eth_price_points": len(eth_data),
+                "btc_sentiment_points": len(btc_sentiment) if btc_sentiment else 0,
+                "eth_sentiment_points": len(eth_sentiment) if eth_sentiment else 0,
+                "common_dates": len(common_dates)
+            },
+            "correlation_metrics": {
+                "price_correlation": round(price_correlation, 4),
+                "correlation_strength": "strong" if abs(price_correlation) > 0.7 else "moderate" if abs(price_correlation) > 0.3 else "weak"
+            },
+            "volatility_metrics": {
+                "btc_volatility": round(btc_volatility, 4),
+                "eth_volatility": round(eth_volatility, 4),
+                "volatility_ratio": round(eth_volatility / btc_volatility, 2) if btc_volatility > 0 else 0,
+                "btc_risk_level": "high" if btc_volatility > 0.05 else "medium" if btc_volatility > 0.03 else "low",
+                "eth_risk_level": "high" if eth_volatility > 0.05 else "medium" if eth_volatility > 0.03 else "low"
+            },
+            "sentiment_metrics": {
+                "btc_twitter_avg": round(avg_btc_twitter, 4),
+                "btc_reddit_avg": round(avg_btc_reddit, 4),
+                "eth_twitter_avg": round(avg_eth_twitter, 4),
+                "eth_reddit_avg": round(avg_eth_reddit, 4)
+            },
+            "performance_metrics": {
+                "btc_price_change_pct": round(btc_price_change, 2),
+                "eth_price_change_pct": round(eth_price_change, 2),
+                "relative_performance": round(btc_price_change - eth_price_change, 2)
+            },
+            "portfolio_insights": {
+                "diversification_benefit": "excellent" if abs(price_correlation) < 0.5 else "good" if abs(price_correlation) < 0.8 else "limited",
+                "recommended_allocation": "balanced" if abs(price_correlation) < 0.7 else "btc_heavy" if btc_volatility < eth_volatility else "eth_heavy"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return analytics_result
+        
+    except Exception as e:
+        logger.error(f"Error calculating market analytics: {e}")
+        raise HTTPException(status_code=500, detail="Error calculating market analytics")
+
 @app.get("/analytics/rate_limits")
 async def get_rate_limit_analytics(request: Request):
     """Get rate limit statistics for current client"""
