@@ -26,6 +26,10 @@ export interface PredictionData {
   target_date: string
   created_at: string
   features?: Record<string, number>
+  actual_direction?: 'UP' | 'DOWN'
+  is_correct?: boolean
+  price_change_pct?: number
+  validated_at?: string
 }
 
 export interface CurrentPrice {
@@ -48,15 +52,47 @@ export interface PaginatedResponse<T> {
   has_prev: boolean
 }
 
+// Updated APIHealthStatus to match production backend response
 export interface APIHealthStatus {
   status: string
   timestamp: string
   version: string
-  uptime: number
+  environment: string
   services: {
-    database: string
-    cache: string
-    ml_models: string
+    database: {
+      status: string
+    }
+    cache: {
+      status: string
+    }
+    rate_limiter: {
+      status: string
+    }
+    websocket: {
+      service_status: string
+      connections: {
+        total_connections: number
+        subscription_stats: {
+          prices: number
+          predictions: number
+          sentiment: number
+          all: number
+        }
+        currency_stats: {
+          BTC: {
+            prices: number
+            predictions: number
+            sentiment: number
+          }
+          ETH: {
+            prices: number
+            predictions: number
+            sentiment: number
+          }
+        }
+        uptime: number
+      }
+    }
   }
 }
 
@@ -87,4 +123,17 @@ export interface APIError {
   detail: string
   status_code: number
   timestamp: string
+}
+
+export interface PredictionHistoryItem {
+  id: string
+  currency: string
+  prediction_date: string
+  predicted_direction: 'UP' | 'DOWN'
+  confidence_score: number
+  model_type: string
+  actual_direction?: 'UP' | 'DOWN'
+  is_correct?: boolean
+  price_change_pct?: number
+  validated_at?: string
 } 

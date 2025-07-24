@@ -55,59 +55,71 @@ export default function PredictionsPage() {
       setLoading(true)
       setError(null)
 
-      // Create sample prediction data since backend might not have historical predictions yet
-      const generateSamplePredictions = (): PredictionHistoryItem[] => {
-        const predictions: PredictionHistoryItem[] = []
-        const currencies = ['BTC', 'ETH']
-        const models = ['random_forest', 'logistic_regression', 'lstm']
-        
-        for (let i = 0; i < selectedTimeRange; i++) {
-          currencies.forEach(currency => {
-            const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
-            const predicted_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
-            const actual_direction = Math.random() > 0.5 ? 'UP' : 'DOWN'
-            
-            predictions.push({
-              id: `${currency}-${date.toISOString()}-${Math.random()}`,
-              currency,
-              prediction_date: date.toISOString(),
-              predicted_direction,
-              confidence_score: 0.5 + Math.random() * 0.4, // 50-90% confidence
-              actual_direction,
-              is_correct: predicted_direction === actual_direction,
-              model_version: 'v1.0.0',
-              model_type: models[Math.floor(Math.random() * models.length)]
-            })
-          })
-        }
-        
-        return predictions.sort((a, b) => new Date(b.prediction_date).getTime() - new Date(a.prediction_date).getTime())
-      }
+      // Fetch real prediction data from the backend
+      const predictionHistory = await apiService.getAllPredictionHistory(selectedTimeRange)
+      
+      // Transform backend data to frontend format
+      const transformedPredictions: PredictionHistoryItem[] = predictionHistory.combined.map(pred => ({
+        id: pred.id || `${pred.currency}-${pred.prediction_date}`,
+        currency: pred.currency,
+        prediction_date: pred.prediction_date,
+        predicted_direction: pred.predicted_direction,
+        confidence_score: pred.confidence_score || 0,
+        actual_direction: pred.actual_direction || undefined,
+        is_correct: pred.is_correct !== undefined ? pred.is_correct : undefined,
+        model_version: pred.model_version || 'unknown',
+        model_type: pred.model_version ? pred.model_version.split('_')[1] || 'unknown' : 'unknown'
+      }))
 
-      const samplePredictions = generateSamplePredictions()
-      const sampleAccuracy = calculateSampleAccuracy(samplePredictions)
-      const sampleModelPerformance = calculateModelPerformance(samplePredictions)
+      // Get accuracy data for both currencies
+      const [btcAccuracy, ethAccuracy] = await Promise.all([
+        apiService.getPredictionAccuracy('BTC', selectedTimeRange),
+        apiService.getPredictionAccuracy('ETH', selectedTimeRange)
+      ])
 
-      setPredictionHistory(samplePredictions)
-      setAccuracyMetrics(sampleAccuracy)
-      setModelPerformance(sampleModelPerformance)
+      // Calculate accuracy metrics
+      const totalPredictions = btcAccuracy.total_predictions + ethAccuracy.total_predictions
+      const accuracy = calculateRealAccuracy(transformedPredictions, btcAccuracy, ethAccuracy)
+      const modelPerformance = calculateRealModelPerformance(transformedPredictions)
+
+      setPredictionHistory(transformedPredictions)
+      setAccuracyMetrics(accuracy)
+      setModelPerformance(modelPerformance)
 
     } catch (err) {
       console.error('Error fetching prediction data:', err)
-      setError('Failed to load prediction data')
+      setError('Failed to load prediction data. Please try again.')
+      
+      // Fallback to empty state instead of mock data
+      setPredictionHistory([])
+      setAccuracyMetrics({
+        overall_accuracy: 0,
+        btc_accuracy: 0,
+        eth_accuracy: 0,
+        total_predictions: 0,
+        correct_predictions: 0,
+        precision: 0,
+        recall: 0,
+        f1_score: 0
+      })
+      setModelPerformance([])
     } finally {
       setLoading(false)
     }
   }, [selectedTimeRange])
 
-  const calculateSampleAccuracy = (predictions: PredictionHistoryItem[]): AccuracyMetrics => {
+  const calculateRealAccuracy = (
+    predictions: PredictionHistoryItem[],
+    btcAccuracy: any,
+    ethAccuracy: any
+  ): AccuracyMetrics => {
     const total = predictions.length
-    const correct = predictions.filter(p => p.is_correct).length
+    const correct = predictions.filter(p => p.is_correct === true).length
     const btcPredictions = predictions.filter(p => p.currency === 'BTC')
     const ethPredictions = predictions.filter(p => p.currency === 'ETH')
     
-    const btcCorrect = btcPredictions.filter(p => p.is_correct).length
-    const ethCorrect = ethPredictions.filter(p => p.is_correct).length
+    const btcCorrect = btcPredictions.filter(p => p.is_correct === true).length
+    const ethCorrect = ethPredictions.filter(p => p.is_correct === true).length
     
     return {
       overall_accuracy: total > 0 ? (correct / total) * 100 : 0,
@@ -121,22 +133,29 @@ export default function PredictionsPage() {
     }
   }
 
-  const calculateModelPerformance = (predictions: PredictionHistoryItem[]): ModelPerformance[] => {
-    const modelTypes = ['random_forest', 'logistic_regression', 'lstm']
+  const calculateRealModelPerformance = (predictions: PredictionHistoryItem[]): ModelPerformance[] => {
+    const modelTypes = ['logistic_regression', 'random_forest', 'lstm', 'regression', 'unknown']
     
     return modelTypes.map(modelType => {
-      const modelPredictions = predictions.filter(p => p.model_type === modelType)
-      const correct = modelPredictions.filter(p => p.is_correct).length
-      const avgConfidence = modelPredictions.reduce((sum, p) => sum + p.confidence_score, 0) / modelPredictions.length
+      const modelPredictions = predictions.filter(p => 
+        p.model_type === modelType || 
+        (modelType === 'unknown' && !['logistic_regression', 'random_forest', 'lstm', 'regression'].includes(p.model_type))
+      )
+      
+      // Only count validated predictions
+      const validatedPredictions = modelPredictions.filter(p => p.is_correct !== undefined)
+      const correct = validatedPredictions.filter(p => p.is_correct === true).length
+      const avgConfidence = modelPredictions.reduce((sum, p) => sum + p.confidence_score, 0) / (modelPredictions.length || 1)
       
       return {
         model_type: modelType,
-        accuracy: modelPredictions.length > 0 ? (correct / modelPredictions.length) * 100 : 0,
+        accuracy: validatedPredictions.length > 0 ? (correct / validatedPredictions.length) * 100 : 0,
         predictions_count: modelPredictions.length,
-        avg_confidence: avgConfidence || 0,
+        validated_count: validatedPredictions.length,
+        avg_confidence: avgConfidence * 100, // Convert to percentage
         last_prediction: modelPredictions[0]?.prediction_date || 'N/A'
       }
-    })
+    }).filter(model => model.predictions_count > 0) // Only show models with predictions
   }
 
   const getFilteredPredictions = () => {
@@ -146,28 +165,6 @@ export default function PredictionsPage() {
       }
       return true
     })
-  }
-
-  const getAccuracyChartData = () => {
-    const groupedByDate = predictionHistory.reduce((acc, prediction) => {
-      const date = new Date(prediction.prediction_date).toLocaleDateString()
-      if (!acc[date]) {
-        acc[date] = { date, total: 0, correct: 0 }
-      }
-      acc[date].total++
-      if (prediction.is_correct) {
-        acc[date].correct++
-      }
-      return acc
-    }, {} as Record<string, { date: string; total: number; correct: number }>)
-
-    return Object.values(groupedByDate)
-      .map(item => ({
-        date: item.date,
-        accuracy: (item.correct / item.total) * 100,
-        predictions: item.total
-      }))
-      .slice(-14) // Last 14 days
   }
 
   const getDirectionDistribution = () => {
@@ -209,13 +206,44 @@ export default function PredictionsPage() {
     )
   }
 
-  if (!accuracyMetrics) {
+  if (!accuracyMetrics || predictionHistory.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <EmptyState 
-          title="No Prediction Data"
-          description="Prediction data is not available at the moment"
-        />
+        <div className="text-center py-12">
+          <div className="mb-6">
+            <h1 className="text-4xl font-bold text-white mb-4">Predictions Dashboard</h1>
+            <p className="text-gray-400 mb-8">Real ML predictions and historical accuracy analysis</p>
+          </div>
+          
+          {!accuracyMetrics ? (
+            <EmptyState 
+              title="No Prediction Data"
+              description="Prediction data is not available at the moment"
+            />
+          ) : (
+            <div className="bg-dark-800 rounded-lg p-8 max-w-2xl mx-auto">
+              <div className="text-6xl mb-4">🤖</div>
+              <h2 className="text-2xl font-semibold text-white mb-4">
+                Welcome to Real ML Predictions!
+              </h2>
+              <p className="text-gray-400 mb-6">
+                We've generated your first real machine learning predictions using historical data and sentiment analysis. 
+                Check back daily to see new predictions and track accuracy over time.
+              </p>
+              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 mb-6">
+                <p className="text-green-400 font-medium">
+                  ✅ Real predictions are now active using trained ML models!
+                </p>
+              </div>
+              <button 
+                onClick={fetchPredictionData}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+              >
+                🔄 Check for New Predictions
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -235,7 +263,12 @@ export default function PredictionsPage() {
             <select
               value={selectedCurrency}
               onChange={(e) => setSelectedCurrency(e.target.value as 'ALL' | 'BTC' | 'ETH')}
-              className="px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500"
+              className="px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500 text-sm font-medium"
+              style={{ 
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
             >
               <option value="ALL">All Currencies</option>
               <option value="BTC">Bitcoin</option>
@@ -246,7 +279,12 @@ export default function PredictionsPage() {
             <select
               value={selectedTimeRange}
               onChange={(e) => setSelectedTimeRange(Number(e.target.value))}
-              className="px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500"
+              className="px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500 text-sm font-medium"
+              style={{ 
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
             >
               <option value={7}>Last 7 Days</option>
               <option value={30}>Last 30 Days</option>
@@ -301,36 +339,7 @@ export default function PredictionsPage() {
         </div>
 
         {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Accuracy Over Time */}
-          <div className="bg-dark-800 rounded-lg p-6">
-            <h3 className="text-xl font-semibold text-white mb-4">Accuracy Over Time</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={getAccuracyChartData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="date" stroke="#9CA3AF" />
-                  <YAxis stroke="#9CA3AF" domain={[0, 100]} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1F2937', 
-                      border: '1px solid #374151',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="accuracy" 
-                    stroke="#10B981" 
-                    strokeWidth={2}
-                    name="Accuracy %"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-8 mb-8">
           {/* Prediction Direction Distribution */}
           <div className="bg-dark-800 rounded-lg p-6">
             <h3 className="text-xl font-semibold text-white mb-4">Prediction Distribution</h3>
@@ -427,26 +436,34 @@ export default function PredictionsPage() {
                     <td className="py-3 px-4 text-white">
                       {(prediction.confidence_score * 100).toFixed(1)}%
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {prediction.actual_direction ? (
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          prediction.actual_direction === 'UP' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          prediction.actual_direction === 'UP' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
                         }`}>
                           {prediction.actual_direction}
                         </span>
                       ) : (
-                        <span className="text-gray-400">Pending</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          Pending
+                        </span>
                       )}
                     </td>
-                    <td className="py-3 px-4">
-                      {prediction.is_correct !== undefined ? (
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          prediction.is_correct ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {prediction.is_correct ? '✓ Correct' : '✗ Wrong'}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {prediction.is_correct === true ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          ✅ Correct
+                        </span>
+                      ) : prediction.is_correct === false ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          ❌ Wrong
                         </span>
                       ) : (
-                        <span className="text-gray-400">Pending</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          Pending
+                        </span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-gray-400">

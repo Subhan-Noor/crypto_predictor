@@ -1,0 +1,45 @@
+# Try to import snscrape, but handle import errors gracefully
+try:
+    import snscrape.modules.twitter as sntwitter
+    SNSCRAPE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: snscrape not available: {e}")
+    SNSCRAPE_AVAILABLE = False
+    sntwitter = None
+
+from typing import List
+
+class TwitterScraper:
+    """Service to scrape Twitter data using snscrape"""
+
+    def __init__(self):
+        if not SNSCRAPE_AVAILABLE:
+            print("Warning: TwitterScraper initialized without snscrape support")
+
+    def fetch_tweets(self, query: str, limit: int = 100) -> List[str]:
+        """Fetch tweets for a given query using snscrape"""
+        if not SNSCRAPE_AVAILABLE:
+            print("Warning: snscrape not available, returning empty tweet list")
+            return []
+        
+        tweets = []
+        try:
+            for i, tweet in enumerate(sntwitter.TwitterSearchScraper(query).get_items()):
+                if i >= limit:
+                    break
+                tweets.append(tweet.content)
+        except Exception as e:
+            print(f"Error fetching tweets: {e}")
+            return []
+        return tweets
+
+    def get_crypto_sentiment(self, currency: str) -> float:
+        """Get sentiment for a specific cryptocurrency"""
+        if not SNSCRAPE_AVAILABLE:
+            print("Warning: snscrape not available, returning neutral sentiment")
+            return 0.0
+        
+        query = f"#{currency} OR ${currency} OR {currency.lower()} crypto"
+        tweets = self.fetch_tweets(query, limit=50)
+        # Placeholder for sentiment analysis logic
+        return 0.0  # Replace with actual sentiment analysis 

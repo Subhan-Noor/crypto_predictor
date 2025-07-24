@@ -135,6 +135,76 @@ export const apiService = {
     const response = await apiClient.post<PredictionData>(`/predict/${currency}/basic`, {})
     return response.data
   },
+
+  // Historical Predictions
+  async getPredictionHistory(
+    currency: Currency,
+    days: number = 30,
+    limit: number = 100
+  ): Promise<{
+    currency: string;
+    predictions: any[];
+    count: number;
+    days: number;
+  }> {
+    const params = new URLSearchParams({
+      days: days.toString(),
+      limit: limit.toString(),
+    })
+
+    const response = await apiClient.get(
+      `/predictions/${currency}/history?${params.toString()}`
+    )
+    return response.data
+  },
+
+  // Prediction Accuracy
+  async getPredictionAccuracy(currency: Currency, days: number = 30): Promise<{
+    currency: string;
+    total_predictions: number;
+    recent_predictions: any[];
+    prediction_distribution: {
+      up: number;
+      down: number;
+    };
+  }> {
+    const params = new URLSearchParams({
+      days: days.toString(),
+    })
+
+    const response = await apiClient.get(
+      `/predictions/accuracy/${currency}?${params.toString()}`
+    )
+    return response.data
+  },
+
+  // Get all predictions for the predictions page
+  async getAllPredictionHistory(days: number = 30): Promise<{
+    BTC: any[];
+    ETH: any[];
+    combined: any[];
+  }> {
+    try {
+      const [btcHistory, ethHistory] = await Promise.all([
+        this.getPredictionHistory('BTC', days, 100),
+        this.getPredictionHistory('ETH', days, 100)
+      ])
+
+      const combined = [
+        ...btcHistory.predictions.map(p => ({ ...p, currency: 'BTC' })),
+        ...ethHistory.predictions.map(p => ({ ...p, currency: 'ETH' }))
+      ].sort((a, b) => new Date(b.prediction_date).getTime() - new Date(a.prediction_date).getTime())
+
+      return {
+        BTC: btcHistory.predictions,
+        ETH: ethHistory.predictions,
+        combined
+      }
+    } catch (error) {
+      console.error('Error fetching all prediction history:', error)
+      throw error
+    }
+  },
 }
 
 // Error handler helper
@@ -165,7 +235,10 @@ export const handleAPIError = (error: any): string => {
 
 // Data transformation helpers
 export const transformPriceDataForChart = (data: PriceData[]) => {
-  return data.map(item => ({
+  // Sort data chronologically (oldest to newest) for proper chart display
+  const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  
+  return sortedData.map(item => ({
     date: new Date(item.date).toLocaleDateString(),
     price: item.close,
     volume: item.volume,
@@ -176,7 +249,10 @@ export const transformPriceDataForChart = (data: PriceData[]) => {
 }
 
 export const transformSentimentDataForChart = (data: SentimentData[]) => {
-  return data.map(item => ({
+  // Sort data chronologically (oldest to newest) for proper chart display
+  const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  
+  return sortedData.map(item => ({
     date: new Date(item.date).toLocaleDateString(),
     twitter: item.twitter_sentiment,
     reddit: item.reddit_sentiment,

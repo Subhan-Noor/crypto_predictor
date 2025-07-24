@@ -240,5 +240,26 @@ class DatabaseManager:
             logger.error(f"Error fetching predictions for {currency}: {str(e)}")
             return []
 
+    async def update_prediction(self, prediction_id: str, update_data: dict) -> bool:
+        """Update a prediction record with validation results"""
+        try:
+            if not self.client:
+                logger.error("Database client not available")
+                return False
+            
+            # Update the prediction record
+            result = self.client.table("predictions").update(update_data).eq("id", prediction_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                logger.info(f"Successfully updated prediction {prediction_id}")
+                return True
+            else:
+                logger.warning(f"No prediction found with ID {prediction_id} or update failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating prediction {prediction_id}: {str(e)}")
+            return False
+
 # Global database manager instance
 db_manager = DatabaseManager() 

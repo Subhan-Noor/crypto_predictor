@@ -1,0 +1,136 @@
+name: Daily Sentiment Data Collection
+
+on:
+  schedule:
+    # Run daily at 9:00 AM UTC (adjust timezone as needed)
+    - cron: '0 9 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Collection mode'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - test
+          - historical
+      days:
+        description: 'Days for historical collection (if mode is historical)'
+        required: false
+        default: '7'
+        type: string
+
+jobs:
+  collect-sentiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    env:
+      # Database configuration
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      
+      # Twitter API configuration (optional)
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+      TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+      TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+      TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+      TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+      
+      # Reddit API configuration (optional)
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: "CryptoPredictorBot/1.0 (GitHub Actions)"
+      
+      # Application settings
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data (for TextBlob)
+        run: |
+          python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"
+      
+      - name: Test database connection
+        run: |
+          cd backend
+          python test_connection.py
+      
+      - name: Run sentiment collection
+        run: |
+          cd backend
+          python scripts/sentiment_data_collection.py \
+            --mode ${{ github.event.inputs.mode || 'daily' }} \
+            --days ${{ github.event.inputs.days || '7' }} \
+            --verbose
+        
+        # Continue on error to allow notification step to run
+        continue-on-error: true
+        id: collection
+      
+      - name: Create status summary
+        run: |
+          echo "## Sentiment Collection Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ github.event.inputs.mode || 'daily' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ steps.collection.outcome }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.collection.outcome }}" = "failure" ]; then
+            echo "- **Result**: ❌ Collection failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Result**: ✅ Collection completed successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: Connected to Supabase" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ secrets.TWITTER_BEARER_TOKEN }}" ]; then
+            echo "- **Twitter API**: Configured ✅" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Twitter API**: Not configured ⚠️" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -n "${{ secrets.REDDIT_CLIENT_ID }}" ]; then
+            echo "- **Reddit API**: Configured ✅" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Reddit API**: Not configured ⚠️" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: sentiment-collection-logs-${{ github.run_number }}
+          path: |
+            backend/*.log
+          retention-days: 7
+      
+      # Optional: Notify on failure (configure webhook or email as needed)
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Sentiment collection failed. Check the logs for details."
+          # Add notification logic here (Slack, Discord, email, etc.)
+          # Example for curl webhook:
+          # curl -X POST "${{ secrets.WEBHOOK_URL }}" \
+          #   -H "Content-Type: application/json" \
+          #   -d '{"text": "🚨 Crypto sentiment collection failed in GitHub Actions"}' 

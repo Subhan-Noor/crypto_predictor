@@ -259,15 +259,24 @@ class CryptoPredictionPipeline:
             ID of saved prediction
         """
         try:
+            # Convert date to string if it's a date object
+            prediction_date = prediction['prediction_date']
+            if hasattr(prediction_date, 'isoformat'):
+                prediction_date = prediction_date.isoformat()
+            elif hasattr(prediction_date, 'strftime'):
+                prediction_date = prediction_date.strftime('%Y-%m-%d')
+            else:
+                prediction_date = str(prediction_date)
+            
             # Prepare data for database
             prediction_data = {
                 'currency': prediction['currency'],
-                'prediction_date': prediction['prediction_date'],
+                'prediction_date': prediction_date,
                 'prediction_horizon': prediction['prediction_horizon'],
                 'predicted_direction': prediction['predicted_direction'],
-                'confidence_score': prediction['confidence_score'],
-                'model_version': prediction['model_version'],
-                'features_used': prediction['features_used']
+                'confidence_score': float(prediction['confidence_score']),
+                'model_version': str(prediction['model_version']),
+                'features_used': str(prediction['features_used']) if not isinstance(prediction['features_used'], str) else prediction['features_used']
             }
             
             # Insert into database

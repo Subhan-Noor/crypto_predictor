@@ -9,6 +9,7 @@ This module provides:
 - Enhanced error handling and validation
 - Background task processing
 - Comprehensive monitoring and analytics
+- Real sentiment analysis for crypto markets (credential-free)
 """
 
 import asyncio
@@ -23,22 +24,24 @@ from dateutil import parser as date_parser
 
 from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from fastapi.encoders import jsonable_encoder
+from contextlib import asynccontextmanager
+import uvicorn
 
-# Import existing services
+# Import services with graceful fallbacks for credential-free operation
+from .services.twitter_service import twitter_service, TwitterSentimentService
+from .services.reddit_service import reddit_service, RedditSentimentService
+from .services.sentiment_analyzer import sentiment_analyzer
+
+# Database and ML imports
 from .database import db_manager
-from .services.binance_service import BinancePriceFetcher
-from .services.twitter_service import TwitterScraper
-from .services.reddit_service import RedditScraper
-
-# Import new Stage 4 services
-from .services.cache_service import cache_service
-from .middleware.rate_limiter import rate_limiter, rate_limit_middleware
-from .services.websocket_service import websocket_service
-from .services.background_tasks import BackgroundTaskService
+from .logger import logger
+from ml.prediction_pipeline import CryptoPredictionPipeline
+from ml.crypto_data_fetcher import CryptoDataFetcher
 
 # Import enhanced models
 from .models.api_models import (
@@ -46,9 +49,6 @@ from .models.api_models import (
     EnhancedPriceResponse, EnhancedSentimentResponse, EnhancedPredictionResponse,
     PredictionRequest, APIHealthStatus, EnhancedErrorResponse
 )
-
-# Import ML components
-from ml.prediction_pipeline import CryptoPredictionPipeline
 
 # Import configuration
 from config import settings
@@ -58,16 +58,14 @@ logging.basicConfig(level=getattr(logging, settings.log_level))
 logger = logging.getLogger(__name__)
 
 # Initialize services
-binance_service = BinancePriceFetcher()
-twitter_service = TwitterScraper()
-reddit_service = RedditScraper()
+binance_service = CryptoDataFetcher() # Changed from BinancePriceFetcher
 prediction_pipeline = CryptoPredictionPipeline()
 background_task_service = BackgroundTaskService()
 
 # Create FastAPI app
 app = FastAPI(
     title="Enhanced Crypto Price Prediction API",
-    description="Production-ready API with caching, rate limiting, and real-time updates",
+    description="Production-ready API with caching, rate limiting, real-time updates, and sentiment analysis",
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -832,7 +830,7 @@ async def get_prediction_history(
 async def get_prediction_accuracy(currency: str, days: int = 30):
     """Get prediction accuracy metrics for a currency"""
     try:
-        # Get predictions and calculate accuracy
+        # Get predictions with validation data
         predictions = await db_manager.get_predictions(currency, days, 1000)
         
         if not predictions:
@@ -840,15 +838,23 @@ async def get_prediction_accuracy(currency: str, days: int = 30):
                 "currency": currency,
                 "accuracy": 0,
                 "total_predictions": 0,
-                "correct_predictions": 0
+                "correct_predictions": 0,
+                "validated_predictions": 0
             }
         
-        # Calculate accuracy (this would need actual price data to compare)
-        # For now, return basic stats
+        # Calculate real accuracy from validation data
+        validated_predictions = [p for p in predictions if p.get("is_correct") is not None]
+        correct_predictions = [p for p in validated_predictions if p.get("is_correct") == True]
+        
+        accuracy = (len(correct_predictions) / len(validated_predictions) * 100) if validated_predictions else 0
+        
         return {
             "currency": currency,
+            "accuracy": accuracy,
             "total_predictions": len(predictions),
-            "recent_predictions": predictions[:10],  # Last 10 predictions
+            "validated_predictions": len(validated_predictions),
+            "correct_predictions": len(correct_predictions),
+            "recent_predictions": predictions[:10],
             "prediction_distribution": {
                 "up": len([p for p in predictions if p.get("predicted_direction") == "UP"]),
                 "down": len([p for p in predictions if p.get("predicted_direction") == "DOWN"])
@@ -857,3 +863,21 @@ async def get_prediction_accuracy(currency: str, days: int = 30):
     except Exception as e:
         logger.error(f"Error calculating prediction accuracy for {currency}: {e}")
         raise HTTPException(status_code=500, detail="Error calculating prediction accuracy") 
+
+@app.get("/predictions/auto-validate")
+async def auto_validate_predictions():
+    """Automatically validate predictions that are ready for validation"""
+    try:
+        from scripts.auto_validate_predictions import AutoPredictionValidator
+        
+        validator = AutoPredictionValidator()
+        summary = await validator.auto_validate_predictions()
+        
+        return {
+            "status": "success",
+            "message": f"Auto-validation complete. {summary['total_validated']} predictions validated.",
+            "summary": summary
+        }
+    except Exception as e:
+        logger.error(f"Auto-validation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Auto-validation failed: {str(e)}") 

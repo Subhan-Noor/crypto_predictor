@@ -98,6 +98,46 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({
         <div className="text-xs text-gray-400">
           Target: {targetDate}
         </div>
+        
+        {/* Show validation results if available */}
+        {prediction.actual_direction && (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Actual:</span>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                prediction.actual_direction === 'UP' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+              }`}>
+                {prediction.actual_direction}
+              </span>
+            </div>
+            
+            {prediction.is_correct !== undefined && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Result:</span>
+                {prediction.is_correct ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400">
+                    ✅ Correct
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400">
+                    ❌ Wrong
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {prediction.price_change_pct !== undefined && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Change:</span>
+                <span className={`font-medium ${
+                  prediction.price_change_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  {prediction.price_change_pct >= 0 ? '+' : ''}{prediction.price_change_pct.toFixed(2)}%
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

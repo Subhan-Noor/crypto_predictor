@@ -110,25 +110,32 @@ class CryptoDataPreprocessor:
     
     def merge_data(self, prices_df: pd.DataFrame, sentiment_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Merge price and sentiment data on date
+        Merge price and sentiment data on date (sentiment is optional)
         
         Args:
             prices_df: Price data DataFrame
-            sentiment_df: Sentiment data DataFrame
+            sentiment_df: Sentiment data DataFrame (can be empty)
             
         Returns:
-            Merged DataFrame with price and sentiment data
+            Merged DataFrame with price and optional sentiment data
         """
-        # Merge on date (left join to keep all price data)
-        merged_df = pd.merge(prices_df, sentiment_df, on='date', how='left')
-        
-        # Forward fill missing sentiment values (carry last known sentiment)
-        merged_df['twitter_sentiment'] = merged_df['twitter_sentiment'].fillna(method='ffill')
-        merged_df['reddit_sentiment'] = merged_df['reddit_sentiment'].fillna(method='ffill')
-        
-        # If still missing, fill with neutral sentiment (0.0)
-        merged_df['twitter_sentiment'] = merged_df['twitter_sentiment'].fillna(0.0)
-        merged_df['reddit_sentiment'] = merged_df['reddit_sentiment'].fillna(0.0)
+        # If no sentiment data, create neutral sentiment columns
+        if sentiment_df.empty:
+            logger.info("No sentiment data available, using neutral sentiment values")
+            merged_df = prices_df.copy()
+            merged_df['twitter_sentiment'] = 0.0  # Neutral sentiment
+            merged_df['reddit_sentiment'] = 0.0   # Neutral sentiment
+        else:
+            # Merge on date (left join to keep all price data)
+            merged_df = pd.merge(prices_df, sentiment_df, on='date', how='left')
+            
+            # Forward fill missing sentiment values (carry last known sentiment)
+            merged_df['twitter_sentiment'] = merged_df['twitter_sentiment'].fillna(method='ffill')
+            merged_df['reddit_sentiment'] = merged_df['reddit_sentiment'].fillna(method='ffill')
+            
+            # If still missing, fill with neutral sentiment (0.0)
+            merged_df['twitter_sentiment'] = merged_df['twitter_sentiment'].fillna(0.0)
+            merged_df['reddit_sentiment'] = merged_df['reddit_sentiment'].fillna(0.0)
         
         return merged_df
     

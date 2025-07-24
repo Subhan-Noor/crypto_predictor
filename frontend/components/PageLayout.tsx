@@ -227,6 +227,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({ filters, actions }) => {
               value={filter.value}
               onChange={(e) => filter.onChange(e.target.value)}
               className="px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+              style={{ 
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
             >
               {filter.options.map((option) => (
                 <option key={option.value} value={option.value}>

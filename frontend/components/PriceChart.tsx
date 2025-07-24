@@ -25,7 +25,10 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   showVolume = false,
   currency
 }) => {
-  const chartData = data.map(item => ({
+  // Sort data chronologically (oldest to newest) for proper chart display
+  const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  
+  const chartData = sortedData.map(item => ({
     date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     price: item.close,
     volume: item.volume,
@@ -102,12 +105,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                   borderRadius: '6px',
                   color: '#ffffff'
                 }}
+                formatter={(value: number) => [value.toLocaleString(), 'Volume']}
               />
               <Area
                 type="monotone"
                 dataKey="volume"
-                stroke="#64748b"
-                fill="#64748b20"
+                stroke="#10b981"
+                strokeWidth={1}
+                fill="#10b98120"
                 fillOpacity={0.1}
               />
             </AreaChart>

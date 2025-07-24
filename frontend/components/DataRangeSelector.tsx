@@ -36,10 +36,24 @@ export const DataRangeSelector: React.FC<DataRangeSelectorProps> = ({
           const range = TIME_RANGES.find(r => r.value === e.target.value)
           if (range) onRangeChange(range)
         }}
-        className={`px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500 focus:outline-none ${className}`}
+        className={`px-3 py-2 bg-dark-800 text-white rounded-lg border border-dark-700 focus:border-blue-500 focus:outline-none text-sm font-medium ${className}`}
+        style={{ 
+          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          fontSize: '14px',
+          fontWeight: '500'
+        }}
       >
         {TIME_RANGES.map((range) => (
-          <option key={range.value} value={range.value}>
+          <option 
+            key={range.value} 
+            value={range.value} 
+            className="text-sm font-medium"
+            style={{ 
+              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
             {range.label}
           </option>
         ))}

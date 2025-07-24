@@ -168,31 +168,47 @@ class CryptoFeatureEngineer:
     
     def add_sentiment_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Add sentiment-based features
+        Add sentiment-based features (optional - works without sentiment data)
         
         Args:
-            df: DataFrame with sentiment data
+            df: DataFrame with sentiment data (may be missing)
             
         Returns:
-            DataFrame with sentiment features
+            DataFrame with sentiment features (filled with neutral values if missing)
         """
         df = df.copy()
+        
+        # Check if sentiment columns exist, if not create neutral values
+        if 'twitter_sentiment' not in df.columns:
+            df['twitter_sentiment'] = 0.0  # Neutral sentiment
+            logger.info("Twitter sentiment data not available, using neutral values")
+            
+        if 'reddit_sentiment' not in df.columns:
+            df['reddit_sentiment'] = 0.0  # Neutral sentiment
+            logger.info("Reddit sentiment data not available, using neutral values")
+        
+        # Fill any NaN values with neutral sentiment
+        df['twitter_sentiment'] = df['twitter_sentiment'].fillna(0.0)
+        df['reddit_sentiment'] = df['reddit_sentiment'].fillna(0.0)
         
         # Combined sentiment
         df['combined_sentiment'] = (df['twitter_sentiment'] + df['reddit_sentiment']) / 2
         
-        # Sentiment moving averages
-        df['twitter_sentiment_sma'] = df['twitter_sentiment'].rolling(window=7).mean()
-        df['reddit_sentiment_sma'] = df['reddit_sentiment'].rolling(window=7).mean()
-        df['combined_sentiment_sma'] = df['combined_sentiment'].rolling(window=7).mean()
+        # Sentiment moving averages (using minimum 3-day window for small datasets)
+        window_size = min(7, max(3, len(df) // 3)) if len(df) > 0 else 3
+        
+        df['twitter_sentiment_sma'] = df['twitter_sentiment'].rolling(window=window_size, min_periods=1).mean()
+        df['reddit_sentiment_sma'] = df['reddit_sentiment'].rolling(window=window_size, min_periods=1).mean()
+        df['combined_sentiment_sma'] = df['combined_sentiment'].rolling(window=window_size, min_periods=1).mean()
         
         # Sentiment volatility
-        df['twitter_sentiment_vol'] = df['twitter_sentiment'].rolling(window=7).std()
-        df['reddit_sentiment_vol'] = df['reddit_sentiment'].rolling(window=7).std()
+        df['twitter_sentiment_vol'] = df['twitter_sentiment'].rolling(window=window_size, min_periods=1).std().fillna(0.0)
+        df['reddit_sentiment_vol'] = df['reddit_sentiment'].rolling(window=window_size, min_periods=1).std().fillna(0.0)
         
         # Sentiment momentum (rate of change)
-        df['twitter_sentiment_momentum'] = df['twitter_sentiment'].diff(7)
-        df['reddit_sentiment_momentum'] = df['reddit_sentiment'].diff(7)
+        momentum_window = min(7, max(1, len(df) // 4)) if len(df) > 0 else 1
+        df['twitter_sentiment_momentum'] = df['twitter_sentiment'].diff(momentum_window).fillna(0.0)
+        df['reddit_sentiment_momentum'] = df['reddit_sentiment'].diff(momentum_window).fillna(0.0)
         
         return df
     
