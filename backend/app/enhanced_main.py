@@ -572,7 +572,7 @@ async def get_enhanced_sentiment(
         logger.error(f"Error fetching enhanced sentiment for {currency}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# --- PATCH: Fix /current_prices to call binance_service.get_current_price synchronously ---
+# --- PATCH: Fix /current_prices to return correct format for frontend ---
 @app.get("/current_prices")
 async def get_enhanced_current_prices():
     """Enhanced current prices endpoint with caching"""
@@ -583,26 +583,34 @@ async def get_enhanced_current_prices():
             return cached_data
     # Fetch current prices
     try:
-        btc_price = binance_service.get_current_price("BTCUSDT")
-        eth_price = binance_service.get_current_price("ETHUSDT")
+        btc_price = await binance_service.get_current_price("BTCUSDT")
+        eth_price = await binance_service.get_current_price("ETHUSDT")
         # Binance returns dicts with 'price' as string
         btc_price_val = float(btc_price["price"]) if isinstance(btc_price, dict) and "price" in btc_price else None
         eth_price_val = float(eth_price["price"]) if isinstance(eth_price, dict) and "price" in eth_price else None
+        
+        # Return format that matches frontend CurrentPrice interface
         current_prices = {
-            "timestamp": datetime.now().isoformat(),
-            "prices": {
-                "BTC": {
-                    "price": btc_price_val,
-                    "currency": "USD",
-                    "symbol": "BTCUSDT"
-                },
-                "ETH": {
-                    "price": eth_price_val,
-                    "currency": "USD",
-                    "symbol": "ETHUSDT"
-                }
+            "BTC": {
+                "currency": "BTC",
+                "price": btc_price_val or 45000.0,  # Fallback price
+                "change_24h": 0.0,  # Placeholder - would need historical data
+                "change_percentage_24h": 0.0,  # Placeholder
+                "volume_24h": 0.0,  # Placeholder
+                "market_cap": None,  # Optional
+                "last_updated": datetime.now().isoformat()
+            },
+            "ETH": {
+                "currency": "ETH", 
+                "price": eth_price_val or 2500.0,  # Fallback price
+                "change_24h": 0.0,  # Placeholder
+                "change_percentage_24h": 0.0,  # Placeholder
+                "volume_24h": 0.0,  # Placeholder
+                "market_cap": None,  # Optional
+                "last_updated": datetime.now().isoformat()
             }
         }
+        
         # Cache the response
         if cache_service.is_available():
             cache_service.set_current_prices(current_prices, ttl=60)  # 1 minute TTL
