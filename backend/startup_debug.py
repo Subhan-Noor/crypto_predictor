@@ -101,26 +101,39 @@ def test_environment():
         'SUPABASE_SERVICE_ROLE_KEY'
     ]
     
+    missing_vars = []
     for var in required_vars:
         value = os.environ.get(var)
         if value:
             print(f"  ✅ {var}: {value[:20]}...")
         else:
-            print(f"  ❌ {var}: Not set")
+            print(f"  ⚠️ {var}: Not set (will be needed at runtime)")
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print(f"  📝 Note: {len(missing_vars)} environment variables missing")
+        print(f"     These are required for the app to function properly")
+        print(f"     Set them in Railway dashboard or use Railway CLI")
     
     print(f"  📍 Current working directory: {os.getcwd()}")
     print(f"  🐍 Python version: {sys.version}")
+    
+    return len(missing_vars) == 0
 
 if __name__ == "__main__":
     print("🚀 Railway Startup Debug Script")
     print("=" * 50)
     
-    test_environment()
-    success = test_imports()
+    env_ok = test_environment()
+    import_ok = test_imports()
     
-    if success:
-        print("\n✅ All tests passed! Ready for deployment.")
+    if import_ok:
+        if env_ok:
+            print("\n✅ All tests passed! Ready for deployment.")
+        else:
+            print("\n⚠️ Imports successful but environment variables missing.")
+            print("   Set environment variables in Railway dashboard before deploying.")
         sys.exit(0)
     else:
-        print("\n❌ Tests failed! Check the errors above.")
+        print("\n❌ Import tests failed! Check the errors above.")
         sys.exit(1) 
