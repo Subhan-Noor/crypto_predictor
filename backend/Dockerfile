@@ -18,7 +18,7 @@ RUN apt-get update \
         build-essential
 
 # Copy requirements and install Python dependencies
-COPY backend/requirements.txt .
+COPY backend/requirements-railway.txt ./requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt

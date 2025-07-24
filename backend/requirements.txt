@@ -1,52 +1,47 @@
+# Core FastAPI dependencies
 fastapi==0.116.1
 uvicorn==0.35.0
-numpy==1.24.3
-pandas==2.0.3
-scikit-learn==1.3.0
-torch==2.0.1
-requests==2.31.0
-fsspec==2023.10.0
 pydantic-settings==2.0.3
-PyYAML==6.0.2
-Jinja2==3.1.6
 starlette==0.47.2
 anyio==4.9.0
 watchfiles==1.1.0
 websockets==15.0.1
 
+# Data processing and ML (updated for Python 3.13 compatibility)
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.3.0
+torch>=2.0.1
+joblib>=1.3.2
+ta>=0.10.2
+
 # Database
 supabase==2.8.1
 psycopg2-binary==2.9.9
 
-# Data fetching and sentiment analysis
-# Twitter scraping (credential-free)
-git+https://github.com/JustAnotherArchivist/snscrape.git@v0.6.2.20230320
-beautifulsoup4==4.12.2
-lxml==4.9.3
+# HTTP requests and API
+requests==2.31.0
+httpx==0.27.0
 
-# Reddit data (credential-free)
-# Using Pushshift API - no credentials needed
+# File handling
+fsspec==2023.10.0
+PyYAML==6.0.2
+Jinja2==3.1.6
 
 # Sentiment Analysis (working without external APIs)
 textblob==0.17.1
 vaderSentiment==3.3.2
 
-# Additional ML and data processing
-seaborn==0.12.2
-matplotlib==3.7.2
-plotly==5.17.0
-joblib==1.3.2
-ta==0.10.2
+# Web scraping (simplified)
+beautifulsoup4==4.12.2
+lxml==4.9.3
 
-# Jupyter and notebook support
-jupyter==1.0.0
-notebook==7.0.6
-ipykernel==6.26.0
-
-# API rate limiting and caching
+# Optional: Redis for caching (can be disabled)
 redis==5.0.1
-httpx==0.27.0
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
+
+# Development dependencies (optional)
+python-dotenv==1.0.0

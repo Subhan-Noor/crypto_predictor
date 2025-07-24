@@ -227,7 +227,7 @@ export default function PredictionsPage() {
                 Welcome to Real ML Predictions!
               </h2>
               <p className="text-gray-400 mb-6">
-                We've generated your first real machine learning predictions using historical data and sentiment analysis. 
+                We&apos;ve generated your first real machine learning predictions using historical data and sentiment analysis. 
                 Check back daily to see new predictions and track accuracy over time.
               </p>
               <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 mb-6">

@@ -36,12 +36,16 @@ import uvicorn
 from .services.twitter_service import twitter_service, TwitterSentimentService
 from .services.reddit_service import reddit_service, RedditSentimentService
 from .services.sentiment_analyzer import sentiment_analyzer
+from .services.background_tasks import BackgroundTaskService
+from .services.websocket_service import websocket_service
+from .services.cache_service import cache_service
+from .middleware.rate_limiter import rate_limit_middleware
 
 # Database and ML imports
 from .database import db_manager
 from .logger import logger
 from ml.prediction_pipeline import CryptoPredictionPipeline
-from ml.crypto_data_fetcher import CryptoDataFetcher
+from .services.binance_service import BinancePriceFetcher
 
 # Import enhanced models
 from .models.api_models import (
@@ -58,7 +62,7 @@ logging.basicConfig(level=getattr(logging, settings.log_level))
 logger = logging.getLogger(__name__)
 
 # Initialize services
-binance_service = CryptoDataFetcher() # Changed from BinancePriceFetcher
+binance_service = BinancePriceFetcher() # Changed from BinancePriceFetcher
 prediction_pipeline = CryptoPredictionPipeline()
 background_task_service = BackgroundTaskService()
 
