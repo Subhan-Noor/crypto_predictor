@@ -3,16 +3,15 @@ import React from 'react'
 export interface TimeRange {
   value: string
   label: string
-  days: number
+  days: number | undefined
 }
 
 export const TIME_RANGES: TimeRange[] = [
-  { value: '1D', label: '1 Day', days: 1 },
   { value: '7D', label: '7 Days', days: 7 },
   { value: '30D', label: '30 Days', days: 30 },
   { value: '90D', label: '90 Days', days: 90 },
   { value: '1Y', label: '1 Year', days: 365 },
-  { value: 'ALL', label: 'All Time', days: 1000 }
+  { value: 'ALL', label: 'All Time', days: undefined }
 ]
 
 interface DataRangeSelectorProps {

@@ -201,47 +201,44 @@ export const EnhancedDashboard: React.FC = () => {
   }, [updateLoadingState, updateErrorState])
 
   const loadPriceData = useCallback(async (timeRange: TimeRange) => {
-    console.log('Loading price data for time range:', timeRange)
     updateLoadingState('charts', true)
     updateErrorState('charts', null)
-    
     try {
       const currencies: Currency[] = ['BTC', 'ETH']
       const pricePromises = currencies.map(async (currency) => {
         try {
-          console.log(`Fetching ${currency} data for ${timeRange.days} days`)
-          const response = await apiService.getPriceData(currency, 1, 100, timeRange.days)
-          console.log(`${currency} data received:`, response.data?.length || 0, 'records')
+          const daysParam = timeRange.value === 'ALL' ? undefined : timeRange.days
+          const response = await apiService.getPriceData(currency, 1, 1000, daysParam)
           return { currency, data: response.data || [] }
         } catch (err) {
-          console.error(`Failed to load price data for ${currency}:`, err)
-          // Return sample data for demonstration
-          return {
-            currency,
-            data: Array.from({ length: Math.min(timeRange.days, 30) }, (_, i) => ({
-              id: `${currency}-${i}`,
+          // Only fallback to mock data for non-ALL time ranges
+          if (timeRange.value !== 'ALL') {
+            return {
               currency,
-              date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
-              open: 45000 + Math.random() * 10000,
-              high: 46000 + Math.random() * 10000,
-              low: 44000 + Math.random() * 10000,
-              close: 45500 + Math.random() * 10000,
-              volume: 1000000 + Math.random() * 5000000
-            })).reverse()
+              data: Array.from({ length: Math.min(timeRange.days || 30, 30) }, (_, i) => ({
+                id: `${currency}-${i}`,
+                currency,
+                date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
+                open: 45000 + Math.random() * 10000,
+                high: 46000 + Math.random() * 10000,
+                low: 44000 + Math.random() * 10000,
+                close: 45500 + Math.random() * 10000,
+                volume: 1000000 + Math.random() * 5000000
+              })).reverse()
+            }
+          } else {
+            // For ALL, do not use mock data, just return empty array
+            return { currency, data: [] }
           }
         }
       })
-
       const results = await Promise.all(pricePromises)
       const priceDataMap = results.reduce((acc, { currency, data }) => {
         acc[currency] = data
         return acc
       }, {} as Record<Currency, PriceData[]>)
-
-      console.log('Final price data:', priceDataMap)
       setState(prev => ({ ...prev, priceData: priceDataMap }))
     } catch (err) {
-      console.error('Failed to load price data:', err)
       updateErrorState('charts', handleAPIError(err))
     } finally {
       updateLoadingState('charts', false)
