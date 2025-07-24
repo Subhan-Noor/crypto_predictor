@@ -213,12 +213,45 @@ class CryptoPredictionPipeline:
                     outputs = model(X_tensor)
                     probabilities = torch.softmax(outputs, dim=1)
                     predicted_class = torch.argmax(outputs, dim=1).item()
-                    confidence = probabilities[0][predicted_class].item()
+                    raw_confidence = probabilities[0][predicted_class].item()
             else:
                 # Sklearn prediction
                 predicted_class = model.predict(X)[0]
                 probabilities = model.predict_proba(X)[0]
-                confidence = probabilities[predicted_class]
+                raw_confidence = probabilities[predicted_class]
+            
+            # Calibrate confidence based on model performance
+            test_accuracy = metadata.get('results', {}).get('test_accuracy', 0.5)
+            test_f1 = metadata.get('results', {}).get('test_f1', 0.5)
+            
+            # Calculate calibrated confidence
+            # Base confidence on model performance, not just prediction probability
+            model_performance_factor = (test_accuracy + test_f1) / 2  # Average of accuracy and F1
+            calibrated_confidence = raw_confidence * model_performance_factor
+            
+            # Apply realistic bounds for crypto predictions
+            # Even the best crypto prediction models shouldn't be 100% confident
+            max_realistic_confidence = 0.85  # 85% max confidence for crypto
+            min_realistic_confidence = 0.45  # 45% min confidence
+            
+            # Clamp confidence to realistic bounds
+            calibrated_confidence = max(min_realistic_confidence, 
+                                      min(max_realistic_confidence, calibrated_confidence))
+            
+            # Add uncertainty based on model type
+            if actual_model_type == 'logistic_regression':
+                # Logistic regression is more conservative
+                calibrated_confidence *= 0.9
+            elif actual_model_type == 'random_forest':
+                # Random forest is moderately confident
+                calibrated_confidence *= 0.95
+            elif actual_model_type == 'lstm':
+                # LSTM can be more confident but still realistic
+                calibrated_confidence *= 0.98
+            
+            # Ensure final confidence is within bounds
+            final_confidence = max(min_realistic_confidence, 
+                                 min(max_realistic_confidence, calibrated_confidence))
             
             # Convert to prediction direction
             predicted_direction = "UP" if predicted_class == 1 else "DOWN"
@@ -229,7 +262,9 @@ class CryptoPredictionPipeline:
                 'prediction_date': (prediction_date or datetime.now(timezone.utc).date()),
                 'prediction_horizon': 7,  # 7 days ahead
                 'predicted_direction': predicted_direction,
-                'confidence_score': float(confidence),
+                'confidence_score': float(final_confidence),
+                'raw_confidence': float(raw_confidence),
+                'model_performance_factor': float(model_performance_factor),
                 'model_version': f"{actual_model_type}_{metadata['timestamp']}",
                 'features_used': feature_names,
                 'model_metadata': {
@@ -240,7 +275,10 @@ class CryptoPredictionPipeline:
                 }
             }
             
-            logger.info(f"Prediction for {currency}: {predicted_direction} (confidence: {confidence:.4f})")
+            logger.info(f"Prediction for {currency}: {predicted_direction} "
+                       f"(raw confidence: {raw_confidence:.4f}, "
+                       f"calibrated: {final_confidence:.4f}, "
+                       f"model performance: {model_performance_factor:.4f})")
             
             return prediction_result
             
