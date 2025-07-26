@@ -24,7 +24,7 @@ class SortOrder(str, Enum):
 class PaginationParams(BaseModel):
     """Pagination parameters"""
     page: int = Field(1, ge=1, description="Page number (starts from 1)")
-    limit: int = Field(100, ge=1, le=1000, description="Number of items per page")
+    limit: int = Field(100, ge=1, le=10000, description="Number of items per page")
     sort_by: Optional[str] = Field("date", description="Field to sort by")
     sort_order: SortOrder = Field(SortOrder.DESC, description="Sort order")
 

@@ -57,15 +57,6 @@ export const PriceCard: React.FC<PriceCardProps> = ({ price, isLoading = false }
           {typeof price.change_24h === 'number' ? `$${Math.abs(price.change_24h).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}
         </span>
       </div>
-
-      {price.volume_24h && (
-        <div className="mt-3 pt-3 border-t border-dark-700">
-          <span className="text-xs text-gray-400">24h Volume</span>
-          <div className="text-sm text-white">
-            ${price.volume_24h.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-          </div>
-        </div>
-      )}
     </div>
   );
 } 

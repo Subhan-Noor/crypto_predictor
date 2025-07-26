@@ -582,31 +582,37 @@ async def get_enhanced_current_prices():
         cached_data = cache_service.get_current_prices()
         if cached_data:
             return cached_data
+    
     # Fetch current prices
     try:
         btc_price = await binance_service.get_current_price("BTCUSDT")
         eth_price = await binance_service.get_current_price("ETHUSDT")
+        
         # Binance returns dicts with 'price' as string
         btc_price_val = float(btc_price["price"]) if isinstance(btc_price, dict) and "price" in btc_price else None
         eth_price_val = float(eth_price["price"]) if isinstance(eth_price, dict) and "price" in eth_price else None
+        
+        # Calculate 24h changes from database
+        btc_24h_change = await calculate_24h_change("BTC", btc_price_val)
+        eth_24h_change = await calculate_24h_change("ETH", eth_price_val)
         
         # Return format that matches frontend CurrentPrice interface
         current_prices = {
             "BTC": {
                 "currency": "BTC",
                 "price": btc_price_val or 45000.0,  # Fallback price
-                "change_24h": 0.0,  # Placeholder - would need historical data
-                "change_percentage_24h": 0.0,  # Placeholder
-                "volume_24h": 0.0,  # Placeholder
+                "change_24h": btc_24h_change["change_24h"],
+                "change_percentage_24h": btc_24h_change["change_percentage_24h"],
+                "volume_24h": btc_24h_change["volume_24h"],
                 "market_cap": None,  # Optional
                 "last_updated": datetime.now().isoformat()
             },
             "ETH": {
                 "currency": "ETH", 
                 "price": eth_price_val or 2500.0,  # Fallback price
-                "change_24h": 0.0,  # Placeholder
-                "change_percentage_24h": 0.0,  # Placeholder
-                "volume_24h": 0.0,  # Placeholder
+                "change_24h": eth_24h_change["change_24h"],
+                "change_percentage_24h": eth_24h_change["change_percentage_24h"],
+                "volume_24h": eth_24h_change["volume_24h"],
                 "market_cap": None,  # Optional
                 "last_updated": datetime.now().isoformat()
             }
@@ -619,6 +625,40 @@ async def get_enhanced_current_prices():
     except Exception as e:
         logger.error(f"Error fetching current prices: {e}")
         raise HTTPException(status_code=500, detail="Error fetching current prices")
+
+async def calculate_24h_change(currency: str, current_price: float) -> dict:
+    """Calculate 24h price change from database"""
+    try:
+        # Get last 2 days of data to calculate 24h change
+        price_data = await db_manager.get_crypto_prices(currency, limit=2)
+        
+        if len(price_data) >= 2:
+            current_close = float(price_data[0]["close"])
+            previous_close = float(price_data[1]["close"])
+            current_volume = float(price_data[0]["volume"])
+            
+            change_24h = current_close - previous_close
+            change_percentage_24h = (change_24h / previous_close) * 100 if previous_close > 0 else 0.0
+            
+            return {
+                "change_24h": round(change_24h, 2),
+                "change_percentage_24h": round(change_percentage_24h, 2),
+                "volume_24h": round(current_volume, 2)
+            }
+        else:
+            # Fallback if not enough data
+            return {
+                "change_24h": 0.0,
+                "change_percentage_24h": 0.0,
+                "volume_24h": 0.0
+            }
+    except Exception as e:
+        logger.error(f"Error calculating 24h change for {currency}: {e}")
+        return {
+            "change_24h": 0.0,
+            "change_percentage_24h": 0.0,
+            "volume_24h": 0.0
+        }
 
 # --- PATCH: Fix /predict/{currency} to use make_prediction ---
 @app.post("/predict/{currency}", response_model=EnhancedPredictionResponse)
