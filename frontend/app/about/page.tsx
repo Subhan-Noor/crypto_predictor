@@ -89,7 +89,7 @@ export default function AboutPage() {
     { stage: 6, title: 'Integrations & Automation', status: '✅ Complete' },
     { stage: 7, title: 'Testing, Deployment & Monitoring', status: '✅ Complete' },
     { stage: 8, title: 'Documentation & Improvements', status: '✅ Complete' },
-    { stage: 9, title: 'Feature Completion & Enhancement', status: '🟡 In Progress' }
+    { stage: 9, title: 'Feature Completion & Enhancement', status: '✅ Complete' }
   ]
 
   return (
@@ -264,52 +264,6 @@ export default function AboutPage() {
                   PostgreSQL database on Supabase with automated ML pipeline and scheduled data ingestion.
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Links and Resources */}
-        <div className="bg-dark-800 rounded-lg p-8">
-          <h2 className="text-3xl font-bold text-white mb-6 text-center">Resources & Links</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white">📚</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Documentation</h3>
-              <p className="text-gray-400 text-sm">
-                Comprehensive guides and API documentation
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white">🔧</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Setup Guide</h3>
-              <p className="text-gray-400 text-sm">
-                Local development and deployment instructions
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white">🤝</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Contributing</h3>
-              <p className="text-gray-400 text-sm">
-                Guidelines for contributing to the project
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white">📧</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Support</h3>
-              <p className="text-gray-400 text-sm">
-                Get help and report issues
-              </p>
             </div>
           </div>
         </div>
