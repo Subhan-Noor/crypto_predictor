@@ -29,9 +29,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   
   const chartData = sortedData.map(item => ({
-    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: new Date(item.date).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'  // Add year to fix multi-year chart tooltips
+    }),
     price: item.close,
     volume: item.volume,
+    fullDate: item.date  // Keep original date for tooltip
   }))
 
   const currencyColor = currency === 'BTC' ? '#f7931a' : '#627eea'
@@ -42,6 +47,29 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         <p className="text-gray-400">No price data available</p>
       </div>
     )
+  }
+
+  // Custom tooltip component to show full date
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const dataPoint = payload[0].payload
+      const fullDate = new Date(dataPoint.fullDate).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+      
+      return (
+        <div className="bg-dark-700 border border-dark-600 rounded-lg p-3 shadow-lg">
+          <p className="text-white font-medium">{fullDate}</p>
+          <p className="text-gray-300">
+            Price: <span className="text-white font-semibold">${payload[0].value.toLocaleString()}</span>
+          </p>
+        </div>
+      )
+    }
+    return null
   }
 
   return (
@@ -71,15 +99,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
             tickLine={false}
             tickFormatter={(value) => `$${value.toLocaleString()}`}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #475569',
-              borderRadius: '6px',
-              color: '#ffffff'
-            }}
-            formatter={(value: number) => [`$${value.toLocaleString()}`, 'Price']}
-          />
+          <Tooltip content={<CustomTooltip />} />
           <Area
             type="monotone"
             dataKey="price"
