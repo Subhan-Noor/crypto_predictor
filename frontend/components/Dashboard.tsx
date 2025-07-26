@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { PriceCard } from './PriceCard'
 import { PredictionCard } from './PredictionCard'
 import { PriceChart } from './PriceChart'
-import { LoadingCard } from './LoadingSpinner'
+import { LoadingSpinner } from './LoadingSpinner'
 import { apiService, handleAPIError } from '../utils/api'
 import { CurrentPrice, PredictionData, PriceData, Currency } from '../types'
 
@@ -165,7 +165,7 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
           {loading ? (
-            <LoadingCard message="Loading BTC chart..." />
+            <LoadingSpinner message="Loading BTC chart..." />
           ) : (
             <PriceChart 
               data={priceData.BTC} 
@@ -177,7 +177,7 @@ export const Dashboard: React.FC = () => {
         
         <div>
           {loading ? (
-            <LoadingCard message="Loading ETH chart..." />
+            <LoadingSpinner message="Loading ETH chart..." />
           ) : (
             <PriceChart 
               data={priceData.ETH} 
