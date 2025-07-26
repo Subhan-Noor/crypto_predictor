@@ -1,6 +1,7 @@
 # Python
 backend/venv/
 backend/__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -25,3 +26,13 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

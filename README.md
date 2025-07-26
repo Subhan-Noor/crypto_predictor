@@ -105,6 +105,26 @@ Set `NEXT_PUBLIC_API_URL` to your backend URL.
 
 ---
 
+## Security & Privacy
+
+### Data Sources
+- **Price Data:** Binance Public REST API (no authentication required)
+- **Sentiment Data:** Twitter/Reddit public data (no personal data collected)
+- **Storage:** Supabase PostgreSQL (your own database)
+
+### Rate Limits
+- **Binance API:** 1200 requests per minute
+- **Twitter/Reddit:** Respects platform rate limits
+- **Supabase:** Depends on your plan
+
+### Environment Variables
+Never commit `.env` files. Use environment variables for:
+- Database credentials
+- API keys (optional)
+- Application settings
+
+---
+
 ## Troubleshooting
 - Check logs in `backend/logs/`
 - Test API health: `GET /health`
@@ -116,4 +136,4 @@ Set `NEXT_PUBLIC_API_URL` to your backend URL.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2024 Crypto Prediction Platform
+Copyright (c) 2025 Crypto Prediction Platform

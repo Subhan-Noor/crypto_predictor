@@ -1,4 +1,4 @@
-import axios, { AxiosResponse } from 'axios'
+import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios'
 import {
   PriceData,
   SentimentData,
@@ -10,45 +10,41 @@ import {
   Currency
 } from '../types'
 
-// API Base Configuration with HTTPS enforcement
-const getApiBaseUrl = () => {
-  let baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cryptopredictor-production.up.railway.app'
-  
-  // Ensure HTTPS in production
-  if (process.env.NODE_ENV === 'production' && baseUrl.startsWith('http://')) {
-    baseUrl = baseUrl.replace('http://', 'https://')
-    console.warn('⚠️ API URL converted to HTTPS for security:', baseUrl)
+// Environment validation
+const validateEnvironment = () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  if (!apiUrl) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is required')
   }
-  
-  return baseUrl
+  return apiUrl
 }
 
-const API_BASE_URL = getApiBaseUrl()
+// Get base URL with fallback and validation
+let baseUrl = validateEnvironment()
 
-console.log('🔗 API Base URL:', API_BASE_URL)
+// Ensure HTTPS in production
+if (process.env.NODE_ENV === 'production' && baseUrl.startsWith('http://')) {
+  baseUrl = baseUrl.replace('http://', 'https://')
+}
 
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000, // Increased timeout for better reliability
+// Create axios instance with configuration
+const apiClient: AxiosInstance = axios.create({
+  baseURL: baseUrl,
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // CSRF protection
   },
-  // Security configurations
-  withCredentials: false, // Don't send cookies for security
-  xsrfCookieName: 'XSRF-TOKEN',
-  xsrfHeaderName: 'X-XSRF-TOKEN',
 })
 
-// Request interceptor for logging
+// Request interceptor for logging (development only)
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`)
+    if (process.env.NODE_ENV === 'development') {
+      // Development logging only
+    }
     return config
   },
   (error) => {
-    console.error('API Request Error:', error)
     return Promise.reject(error)
   }
 )

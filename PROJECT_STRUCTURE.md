@@ -6,6 +6,7 @@ capstone/
 ├── README.md                    # Main project documentation
 ├── API_DOCS.md                  # API endpoint documentation  
 ├── RAILWAY_SETUP.md             # Railway deployment guide
+├── PROJECT_STRUCTURE.md         # This file
 ├── LICENSE                      # MIT License
 ├── .gitignore                   # Git ignore rules
 ├── .gitattributes               # Git attributes
@@ -14,7 +15,12 @@ capstone/
 ├── .github/                     # GitHub Actions workflows
 │   └── workflows/
 │       ├── daily_predictions.yml    # Daily prediction automation
-│       └── daily_validation.yml     # Daily validation automation
+│       ├── daily_validation.yml     # Daily validation automation
+│       ├── daily_data_ingestion.yml # Daily data ingestion
+│       ├── daily-sentiment-collection.yml # Sentiment collection
+│       ├── enhanced_daily_data_ingestion.yml # Enhanced data ingestion
+│       ├── initial_data_population.yml # Initial data setup
+│       └── ci.yml                   # Continuous integration
 ├── backend/                     # Python backend application
 └── frontend/                    # Next.js frontend application
 ```

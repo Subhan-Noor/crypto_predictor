@@ -222,16 +222,12 @@ export const EnhancedDashboard: React.FC = () => {
             days = timeRange.days
           }
           
-          console.log(`Loading ${currency} price data: timeRange=${timeRange.value}, days=${days}, perPage=${perPage}`)
-          
           const response = await apiService.getPriceData(currency, 1, perPage, days)
           
           if (!response.data || response.data.length === 0) {
-            console.warn(`No price data returned for ${currency} with timeRange=${timeRange.value}`)
             return { currency, data: [] }
           }
           
-          console.log(`Loaded ${response.data.length} price records for ${currency}`)
           return { currency, data: response.data }
           
         } catch (err) {
@@ -258,7 +254,6 @@ export const EnhancedDashboard: React.FC = () => {
   }, [updateLoadingState, updateErrorState])
 
   const handleTimeRangeChange = useCallback((timeRange: TimeRange) => {
-    console.log('Time range changed to:', timeRange)
     setState(prev => ({ 
       ...prev, 
       selectedTimeRange: timeRange,
