@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   description: 'AI-powered cryptocurrency price prediction platform for Bitcoin and Ethereum',
   keywords: 'cryptocurrency, bitcoin, ethereum, price prediction, AI, machine learning',
   authors: [{ name: 'Crypto Prediction Team' }],
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export const viewport = {

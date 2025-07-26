@@ -271,7 +271,7 @@ export default function AboutPage() {
         {/* Footer */}
         <div className="text-center mt-12 py-8 border-t border-dark-700">
           <p className="text-gray-400">
-            Built with ❤️ using modern web technologies and machine learning
+            Powered by advanced machine learning and modern web technologies
           </p>
           <p className="text-gray-500 text-sm mt-2">
             © 2024 Crypto Prediction Platform. Open source project under MIT License.

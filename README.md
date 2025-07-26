@@ -109,3 +109,11 @@ Set `NEXT_PUBLIC_API_URL` to your backend URL.
 - Check logs in `backend/logs/`
 - Test API health: `GET /health`
 - Verify database: `python -c "from app.database import db_manager; print(db_manager.is_connected())"`
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2024 Crypto Prediction Platform

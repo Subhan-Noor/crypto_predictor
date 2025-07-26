@@ -9,7 +9,9 @@ export const Navbar: React.FC = () => {
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-crypto-bitcoin to-crypto-ethereum rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">CP</span>
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 18h6v-2H3v2zM3 6v2h6V6H3zm0 7h9v-2H3v2zm10-2v2h8v-2h-8zm0-5v2h8V6h-8zm0 7v2h8v-2h-8z"/>
+              </svg>
             </div>
             <span className="text-xl font-bold text-white">
               Crypto Prediction
