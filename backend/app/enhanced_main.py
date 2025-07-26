@@ -78,7 +78,12 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "https://crypto-predictor-one.vercel.app",  # Vercel frontend
+        "https://cryptopredictor-production.up.railway.app",  # Railway backend (optional, for server-to-server)
+        "http://localhost:3000",  # Local frontend dev
+        "http://localhost:8000",  # Local backend dev
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
