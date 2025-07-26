@@ -34,7 +34,8 @@ export default function StatusPage() {
         api: health?.status === 'healthy' || health?.status === 'ok' ? 'operational' : 'degraded',
         database: health?.services?.database?.status === 'healthy' ? 'operational' : 'degraded',
         cache: health?.services?.cache?.status === 'available' || 
-               health?.services?.cache?.status === 'healthy' ? 'operational' : 'degraded',
+               health?.services?.cache?.status === 'healthy' || 
+               health?.services?.cache?.status === 'connected' ? 'operational' : 'degraded',
         websocket: health?.services?.websocket?.service_status === 'running' ? 'operational' : 'degraded',
         lastUpdate: new Date()
       }
