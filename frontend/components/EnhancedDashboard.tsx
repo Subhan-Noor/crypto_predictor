@@ -207,42 +207,50 @@ export const EnhancedDashboard: React.FC = () => {
       const currencies: Currency[] = ['BTC', 'ETH']
       const pricePromises = currencies.map(async (currency) => {
         try {
-          let limit: number | undefined = 100
-          if (timeRange.value === 'ALL') limit = 10000
-          else if (timeRange.value === '1Y') limit = 366
-          else limit = timeRange.days || 100
-          const daysParam = timeRange.value === 'ALL' ? undefined : timeRange.days
-          const response = await apiService.getPriceData(currency, 1, limit, daysParam)
-          return { currency, data: response.data || [] }
-        } catch (err) {
-          // Only fallback to mock data for non-ALL time ranges
-          if (timeRange.value !== 'ALL') {
-            return {
-              currency,
-              data: Array.from({ length: Math.min(timeRange.days || 30, 30) }, (_, i) => ({
-                id: `${currency}-${i}`,
-                currency,
-                date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
-                open: 45000 + Math.random() * 10000,
-                high: 46000 + Math.random() * 10000,
-                low: 44000 + Math.random() * 10000,
-                close: 45500 + Math.random() * 10000,
-                volume: 1000000 + Math.random() * 5000000
-              })).reverse()
-            }
+          // Set appropriate pagination limit based on time range
+          let perPage: number
+          let days: number | undefined = timeRange.days
+          
+          if (timeRange.value === 'ALL') {
+            perPage = 1000   // Maximum pagination for All Time
+            days = 3650      // ~10 years worth of data
+          } else if (timeRange.value === '1Y') {
+            perPage = 500    // Large pagination for 1+ year
+            days = 365
           } else {
-            // For ALL, do not use mock data, just return empty array
+            perPage = Math.max(200, timeRange.days || 100)  // Reasonable pagination for shorter periods
+            days = timeRange.days
+          }
+          
+          console.log(`Loading ${currency} price data: timeRange=${timeRange.value}, days=${days}, perPage=${perPage}`)
+          
+          const response = await apiService.getPriceData(currency, 1, perPage, days)
+          
+          if (!response.data || response.data.length === 0) {
+            console.warn(`No price data returned for ${currency} with timeRange=${timeRange.value}`)
             return { currency, data: [] }
           }
+          
+          console.log(`Loaded ${response.data.length} price records for ${currency}`)
+          return { currency, data: response.data }
+          
+        } catch (err) {
+          console.error(`Failed to load price data for ${currency}:`, err)
+          // Don't fall back to mock data, just return empty data
+          return { currency, data: [] }
         }
       })
+      
       const results = await Promise.all(pricePromises)
       const priceDataMap = results.reduce((acc, { currency, data }) => {
         acc[currency] = data
         return acc
       }, {} as Record<Currency, PriceData[]>)
+      
       setState(prev => ({ ...prev, priceData: priceDataMap }))
+      
     } catch (err) {
+      console.error('Error loading price data:', err)
       updateErrorState('charts', handleAPIError(err))
     } finally {
       updateLoadingState('charts', false)

@@ -33,7 +33,7 @@ class DateRangeFilter(BaseModel):
     """Date range filtering"""
     start_date: Optional[datetime] = Field(None, description="Start date for filtering")
     end_date: Optional[datetime] = Field(None, description="End date for filtering")
-    days: Optional[int] = Field(None, ge=1, le=365, description="Number of days from today")
+    days: Optional[int] = Field(None, ge=1, le=10000, description="Number of days from today (max 10000 for All Time)")
     
     @validator('end_date')
     def validate_date_range(cls, v, values):

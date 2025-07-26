@@ -86,12 +86,41 @@ export const apiService = {
   ): Promise<PaginatedResponse<PriceData>> {
     const params = new URLSearchParams({
       page: page.toString(),
-      per_page: perPage.toString(),
     })
     
-    if (days) {
+    // Set appropriate per_page/limit based on time range
+    let actualPerPage = perPage
+    if (days === undefined || days > 365) {
+      // For All Time or 1+ year, request maximum records
+      actualPerPage = 1000
+    } else if (days > 90) {
+      // For 90+ days, request more records
+      actualPerPage = 500
+    } else {
+      // For shorter periods, use reasonable limit
+      actualPerPage = Math.max(perPage, days || 100)
+    }
+    
+    params.append('per_page', actualPerPage.toString())
+    
+    if (days !== undefined) {
       // Send days parameter directly for enhanced endpoint compatibility
       params.append('days', days.toString())
+    } else {
+      // For All Time (days undefined), request a very large number of days
+      params.append('days', '3650') // ~10 years of data
+    }
+
+    // Add limit parameter for backend to fetch more records from database
+    if (days === undefined || days > 365) {
+      // For All Time or 1+ year, request more records from database
+      params.append('limit', '10000')
+    } else if (days > 90) {
+      // For 90+ days, request more records from database
+      params.append('limit', '1000')
+    } else {
+      // For shorter periods, use default
+      params.append('limit', '500')
     }
 
     const response = await apiClient.get<PaginatedResponse<PriceData>>(
