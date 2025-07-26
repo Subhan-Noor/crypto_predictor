@@ -9,13 +9,6 @@ import { PriceLoadingCard } from '../../components/EnhancedLoadingSpinner'
 import { ErrorCard } from '../../components/ErrorCard'
 import { EmptyState } from '../../components/EmptyState'
 
-// SEO Metadata
-export const metadata = {
-  title: 'Analytics | Crypto Prediction Platform',
-  description: 'Advanced cryptocurrency analytics including price correlations, volatility analysis, and market insights for Bitcoin and Ethereum.',
-  keywords: 'crypto analytics, bitcoin analysis, ethereum analysis, price correlation, volatility metrics',
-}
-
 interface AnalyticsData {
   priceCorrelation: number
   btcVolatility: number
