@@ -174,21 +174,28 @@ class CleanPredictionPipeline:
         test_f1 = results.get('test_f1', 0.5)
         model_type = model_metadata.get('model_type', 'unknown')
         
-        # Calculate performance factor
+        # Calculate performance factor (average of accuracy and F1)
         performance_factor = (test_accuracy + test_f1) / 2
+        
+        # Base confidence on model performance and raw confidence
+        # For good models (accuracy > 70%), allow higher confidence
+        if performance_factor > 0.7:
+            # Good model - use higher confidence range
+            min_confidence = 0.55  # 55% minimum for good models
+            max_confidence = 0.90  # 90% maximum for good models
+        else:
+            # Poor model - use lower confidence range
+            min_confidence = 0.45  # 45% minimum for poor models
+            max_confidence = 0.75  # 75% maximum for poor models
         
         # Calibrate confidence based on model performance
         calibrated_confidence = raw_confidence * performance_factor
         
         # Apply model-specific adjustments
         if model_type == 'logistic_regression':
-            calibrated_confidence *= 0.9  # More conservative
+            calibrated_confidence *= 0.95  # Slightly more conservative
         elif model_type == 'random_forest':
-            calibrated_confidence *= 0.95  # Moderately confident
-        
-        # Realistic bounds for crypto predictions
-        min_confidence = 0.45  # 45% minimum
-        max_confidence = 0.85  # 85% maximum
+            calibrated_confidence *= 1.0   # Use as-is for good models
         
         # Ensure confidence is within realistic bounds
         final_confidence = max(min_confidence, min(max_confidence, calibrated_confidence))

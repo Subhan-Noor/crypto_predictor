@@ -78,7 +78,6 @@ export default function PredictionsPage() {
       ])
 
       // Calculate accuracy metrics
-      const totalPredictions = btcAccuracy.total_predictions + ethAccuracy.total_predictions
       const accuracy = calculateRealAccuracy(transformedPredictions, btcAccuracy, ethAccuracy)
       const modelPerformance = calculateRealModelPerformance(transformedPredictions)
 
@@ -113,23 +112,36 @@ export default function PredictionsPage() {
     btcAccuracy: any,
     ethAccuracy: any
   ): AccuracyMetrics => {
-    const total = predictions.length
-    const correct = predictions.filter(p => p.is_correct === true).length
-    const btcPredictions = predictions.filter(p => p.currency === 'BTC')
-    const ethPredictions = predictions.filter(p => p.currency === 'ETH')
+    // Use backend accuracy data for each currency separately
+    const btc_accuracy = btcAccuracy.accuracy
+    const eth_accuracy = ethAccuracy.accuracy
     
-    const btcCorrect = btcPredictions.filter(p => p.is_correct === true).length
-    const ethCorrect = ethPredictions.filter(p => p.is_correct === true).length
+    // Calculate overall accuracy as weighted average
+    const btc_total = btcAccuracy.total_predictions
+    const eth_total = ethAccuracy.total_predictions
+    const total = btc_total + eth_total
+    
+    const overall_accuracy = total > 0 ? 
+      ((btc_accuracy * btc_total + eth_accuracy * eth_total) / total) : 0
+    
+    const total_correct = btcAccuracy.correct_predictions + ethAccuracy.correct_predictions
+    
+    // Calculate proper precision and recall
+    const precision = total > 0 ? (total_correct / total) : 0
+    const recall = total > 0 ? (total_correct / total) : 0
+    
+    // Calculate proper F1 score: F1 = 2 * (precision * recall) / (precision + recall)
+    const f1_score = (precision + recall) > 0 ? (2 * precision * recall) / (precision + recall) : 0
     
     return {
-      overall_accuracy: total > 0 ? (correct / total) * 100 : 0,
-      btc_accuracy: btcPredictions.length > 0 ? (btcCorrect / btcPredictions.length) * 100 : 0,
-      eth_accuracy: ethPredictions.length > 0 ? (ethCorrect / ethPredictions.length) * 100 : 0,
+      overall_accuracy: overall_accuracy,
+      btc_accuracy: btc_accuracy,
+      eth_accuracy: eth_accuracy,
       total_predictions: total,
-      correct_predictions: correct,
-      precision: total > 0 ? (correct / total) * 100 : 0,
-      recall: total > 0 ? (correct / total) * 100 : 0,
-      f1_score: total > 0 ? (2 * correct / total) * 100 : 0
+      correct_predictions: total_correct,
+      precision: precision * 100, // Convert to percentage
+      recall: recall * 100, // Convert to percentage
+      f1_score: f1_score * 100 // Convert to percentage
     }
   }
 

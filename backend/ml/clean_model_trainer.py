@@ -275,10 +275,18 @@ class CleanModelTrainer:
         # Prepare data
         X, y, feature_names = self.prepare_data(features_df)
         
-        # Split into train/test
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
+        # TEMPORAL SPLIT: Use chronological split for time series data
+        # This prevents data leakage by ensuring training data comes before test data
+        test_size = 0.2
+        split_idx = int(len(X) * (1 - test_size))
+        
+        X_train = X[:split_idx]
+        X_test = X[split_idx:]
+        y_train = y[:split_idx]
+        y_test = y[split_idx:]
+        
+        logger.info(f"Temporal split: {len(X_train)} training, {len(X_test)} test samples")
+        logger.info(f"Training on earlier {100*(1-test_size):.0f}%, testing on latest {100*test_size:.0f}%")
         
         # Store feature names for saving
         self.feature_names = feature_names
