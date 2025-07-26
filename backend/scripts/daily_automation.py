@@ -66,7 +66,10 @@ class DailyAutomationManager:
                     # Store in database
                     stored_count = 0
                     for entry in historical_data:
-                        date_str = datetime.fromtimestamp(entry["open_time"] / 1000).strftime("%Y-%m-%d")
+                        # Convert Binance timestamp (UTC) to UTC date string
+                        # Binance timestamps are in milliseconds and UTC
+                        utc_datetime = datetime.utcfromtimestamp(entry["open_time"] / 1000)
+                        date_str = utc_datetime.strftime("%Y-%m-%d")
                         
                         success = db_manager.insert_price_data(
                             currency=currency,

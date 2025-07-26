@@ -9,6 +9,38 @@ import { PriceLoadingCard } from '../../components/EnhancedLoadingSpinner'
 import { ErrorCard } from '../../components/ErrorCard'
 import { EmptyState } from '../../components/EmptyState'
 
+// Custom tooltip component for sentiment analysis
+const SentimentTooltip = ({ active, payload, label, currency }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload
+    const sentimentKey = `${currency.toLowerCase()}_sentiment`
+    const priceChangeKey = `${currency.toLowerCase()}_price_change`
+    
+    return (
+      <div className="bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg">
+        <p className="text-white font-medium mb-2">{currency} Analysis</p>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-300">Sentiment Score:</span>
+            <span className="text-white">{data[sentimentKey]?.toFixed(3) || 'N/A'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-300">Price Change:</span>
+            <span className={`${data[priceChangeKey] >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {data[priceChangeKey]?.toFixed(2) || 'N/A'}%
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-300">Date:</span>
+            <span className="text-white">{data.date || 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  return null
+}
+
 interface AnalyticsData {
   priceCorrelation: number
   btcVolatility: number
@@ -407,7 +439,8 @@ export default function AnalyticsPage() {
                     contentStyle={{ 
                       backgroundColor: '#1F2937', 
                       border: '1px solid #374151',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      color: '#FFFFFF'
                     }}
                   />
                   <Legend />
@@ -436,7 +469,8 @@ export default function AnalyticsPage() {
                     contentStyle={{ 
                       backgroundColor: '#1F2937', 
                       border: '1px solid #374151',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      color: '#FFFFFF'
                     }}
                   />
                   <Legend />
@@ -482,18 +516,7 @@ export default function AnalyticsPage() {
                       stroke="#9CA3AF"
                       name="Price Change %"
                     />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1F2937', 
-                        border: '1px solid #374151',
-                        borderRadius: '8px'
-                      }}
-                      labelFormatter={() => 'BTC Analysis'}
-                      formatter={(value, name) => [
-                        typeof value === 'number' ? value.toFixed(2) : value,
-                        name === 'btc_sentiment' ? 'Sentiment Score' : 'Price Change %'
-                      ]}
-                    />
+                    <Tooltip content={<SentimentTooltip currency="BTC" />} />
                     <Scatter dataKey="btc_price_change" fill="#F59E0B" />
                   </ScatterChart>
                 </ResponsiveContainer>
@@ -514,18 +537,7 @@ export default function AnalyticsPage() {
                       stroke="#9CA3AF"
                       name="Price Change %"
                     />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1F2937', 
-                        border: '1px solid #374151',
-                        borderRadius: '8px'
-                      }}
-                      labelFormatter={() => 'ETH Analysis'}
-                      formatter={(value, name) => [
-                        typeof value === 'number' ? value.toFixed(2) : value,
-                        name === 'eth_sentiment' ? 'Sentiment Score' : 'Price Change %'
-                      ]}
-                    />
+                    <Tooltip content={<SentimentTooltip currency="ETH" />} />
                     <Scatter dataKey="eth_price_change" fill="#8B5CF6" />
                   </ScatterChart>
                 </ResponsiveContainer>

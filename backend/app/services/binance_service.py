@@ -16,7 +16,7 @@ class BinancePriceFetcher:
         self.fallback_enabled = True
         
     async def get_current_price(self, symbol: str) -> Dict:
-        """Get current price for a cryptocurrency symbol with fallback"""
+        """Get current price for a cryptocurrency symbol - NO FALLBACK DATA"""
         try:
             # Try Binance API first
             url = f"{self.base_url}/ticker/price"
@@ -26,33 +26,27 @@ class BinancePriceFetcher:
             response.raise_for_status()
             
             data = response.json()
-            logger.info(f"✅ Binance API success for {symbol}: ${data.get('price', 'N/A')}")
+            logger.info(f"✅ Binance current price API success for {symbol}: ${data['price']}")
             return data
             
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 451:
-                logger.warning(f"⚠️ Binance API blocked (451) for {symbol}, using fallback")
-                return await self._get_fallback_current_price(symbol)
+                logger.error(f"❌ Binance current price API blocked (451) for {symbol} - NO FALLBACK DATA")
+                raise Exception(f"Binance API blocked for {symbol}. No fallback data will be generated.")
             else:
-                logger.error(f"❌ Binance API HTTP error for {symbol}: {e}")
-                if self.fallback_enabled:
-                    return await self._get_fallback_current_price(symbol)
-                raise
+                logger.error(f"❌ Binance current price API HTTP error for {symbol}: {e}")
+                raise Exception(f"Binance API HTTP error for {symbol}: {e}")
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Binance API request error for {symbol}: {e}")
-            if self.fallback_enabled:
-                return await self._get_fallback_current_price(symbol)
-            raise
+            logger.error(f"❌ Binance current price API request error for {symbol}: {e}")
+            raise Exception(f"Binance API request error for {symbol}: {e}")
             
         except Exception as e:
-            logger.error(f"❌ Unexpected error fetching price for {symbol}: {e}")
-            if self.fallback_enabled:
-                return await self._get_fallback_current_price(symbol)
-            raise
+            logger.error(f"❌ Unexpected error fetching current price for {symbol}: {e}")
+            raise Exception(f"Unexpected error fetching current price for {symbol}: {e}")
 
     async def get_historical_prices(self, symbol: str, interval: str = "1d", limit: int = 30) -> List[Dict]:
-        """Get historical price data for a cryptocurrency symbol with fallback"""
+        """Get historical price data for a cryptocurrency symbol - NO FALLBACK DATA"""
         try:
             # Try Binance API first
             url = f"{self.base_url}/klines"
@@ -81,29 +75,23 @@ class BinancePriceFetcher:
             
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 451:
-                logger.warning(f"⚠️ Binance historical API blocked (451) for {symbol}, using fallback")
-                return await self._get_fallback_historical_prices(symbol, limit)
+                logger.error(f"❌ Binance historical API blocked (451) for {symbol} - NO FALLBACK DATA")
+                raise Exception(f"Binance API blocked for {symbol}. No fallback data will be generated.")
             else:
                 logger.error(f"❌ Binance historical API HTTP error for {symbol}: {e}")
-                if self.fallback_enabled:
-                    return await self._get_fallback_historical_prices(symbol, limit)
-                raise
+                raise Exception(f"Binance API HTTP error for {symbol}: {e}")
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Binance historical API request error for {symbol}: {e}")
-            if self.fallback_enabled:
-                return await self._get_fallback_historical_prices(symbol, limit)
-            raise
+            raise Exception(f"Binance API request error for {symbol}: {e}")
             
         except Exception as e:
             logger.error(f"❌ Unexpected error fetching historical prices for {symbol}: {e}")
-            if self.fallback_enabled:
-                return await self._get_fallback_historical_prices(symbol, limit)
-            raise
+            raise Exception(f"Unexpected error fetching historical prices for {symbol}: {e}")
 
     async def _get_fallback_current_price(self, symbol: str) -> Dict:
-        """Fallback method for current price when Binance API fails"""
-        logger.info(f"🔄 Using fallback price for {symbol}")
+        """DEPRECATED: Fallback method for current price when Binance API fails - DO NOT USE"""
+        logger.warning(f"⚠️ DEPRECATED: Using fallback price for {symbol} - This should not be used!")
         
         # Try alternative APIs
         try:
@@ -128,7 +116,7 @@ class BinancePriceFetcher:
         
         # Generate realistic fallback price
         fallback_price = self._generate_realistic_price(symbol)
-        logger.info(f"📊 Generated fallback price for {symbol}: ${fallback_price}")
+        logger.warning(f"⚠️ DEPRECATED: Generated fallback price for {symbol}: ${fallback_price}")
         
         return {
             "symbol": symbol,
@@ -137,8 +125,8 @@ class BinancePriceFetcher:
         }
 
     async def _get_fallback_historical_prices(self, symbol: str, limit: int) -> List[Dict]:
-        """Fallback method for historical prices when Binance API fails"""
-        logger.info(f"🔄 Using fallback historical prices for {symbol}")
+        """DEPRECATED: Fallback method for historical prices when Binance API fails - DO NOT USE"""
+        logger.warning(f"⚠️ DEPRECATED: Using fallback historical prices for {symbol} - This should not be used!")
         
         # Generate realistic historical data
         base_price = self._get_base_price(symbol)
@@ -176,7 +164,7 @@ class BinancePriceFetcher:
         # Reverse to get chronological order (oldest first)
         historical_data.reverse()
         
-        logger.info(f"📊 Generated {len(historical_data)} fallback historical records for {symbol}")
+        logger.warning(f"⚠️ DEPRECATED: Generated {len(historical_data)} fallback historical records for {symbol}")
         return historical_data
 
     def _get_coingecko_id(self, symbol: str) -> Optional[str]:

@@ -581,7 +581,7 @@ async def get_enhanced_sentiment(
 # --- PATCH: Fix /current_prices to return correct format for frontend ---
 @app.get("/current_prices")
 async def get_enhanced_current_prices():
-    """Enhanced current prices endpoint with caching"""
+    """Enhanced current prices endpoint with caching - NO FALLBACK DATA"""
     # Check cache first
     if cache_service.is_available():
         cached_data = cache_service.get_current_prices()
@@ -597,6 +597,11 @@ async def get_enhanced_current_prices():
         btc_price_val = float(btc_price["price"]) if isinstance(btc_price, dict) and "price" in btc_price else None
         eth_price_val = float(eth_price["price"]) if isinstance(eth_price, dict) and "price" in eth_price else None
         
+        # Only proceed if we got real prices
+        if btc_price_val is None or eth_price_val is None:
+            logger.error("Failed to get real current prices from Binance API")
+            raise HTTPException(status_code=503, detail="Unable to fetch current prices from external API")
+        
         # Calculate 24h changes from database
         btc_24h_change = await calculate_24h_change("BTC", btc_price_val)
         eth_24h_change = await calculate_24h_change("ETH", eth_price_val)
@@ -605,7 +610,7 @@ async def get_enhanced_current_prices():
         current_prices = {
             "BTC": {
                 "currency": "BTC",
-                "price": btc_price_val or 45000.0,  # Fallback price
+                "price": btc_price_val,
                 "change_24h": btc_24h_change["change_24h"],
                 "change_percentage_24h": btc_24h_change["change_percentage_24h"],
                 "volume_24h": btc_24h_change["volume_24h"],
@@ -614,7 +619,7 @@ async def get_enhanced_current_prices():
             },
             "ETH": {
                 "currency": "ETH", 
-                "price": eth_price_val or 2500.0,  # Fallback price
+                "price": eth_price_val,
                 "change_24h": eth_24h_change["change_24h"],
                 "change_percentage_24h": eth_24h_change["change_percentage_24h"],
                 "volume_24h": eth_24h_change["volume_24h"],
@@ -627,9 +632,11 @@ async def get_enhanced_current_prices():
         if cache_service.is_available():
             cache_service.set_current_prices(current_prices, ttl=60)  # 1 minute TTL
         return current_prices
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching current prices: {e}")
-        raise HTTPException(status_code=500, detail="Error fetching current prices")
+        raise HTTPException(status_code=503, detail="Error fetching current prices from external API")
 
 async def calculate_24h_change(currency: str, current_price: float) -> dict:
     """Calculate 24h price change from database"""

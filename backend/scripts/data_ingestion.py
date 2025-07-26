@@ -30,7 +30,7 @@ class DataIngestionManager:
         self.currencies = ["BTC", "ETH"]
         
     def fetch_and_store_prices(self, days_back: int = 30) -> Dict[str, int]:
-        """Fetch and store price data for all currencies"""
+        """Fetch and store price data for all currencies - NO MOCK DATA"""
         results = {}
         
         for currency in self.currencies:
@@ -48,10 +48,19 @@ class DataIngestionManager:
                     )
                 )
                 
+                # Only store data if we got real data (not fallback/mock)
+                if not historical_data:
+                    logger.warning(f"No price data received for {currency} - skipping storage")
+                    results[currency] = 0
+                    continue
+                
                 # Store in database
                 stored_count = 0
                 for entry in historical_data:
-                    date_str = datetime.fromtimestamp(entry["open_time"] / 1000).strftime("%Y-%m-%d")
+                    # Convert Binance timestamp (UTC) to UTC date string
+                    # Binance timestamps are in milliseconds and UTC
+                    utc_datetime = datetime.utcfromtimestamp(entry["open_time"] / 1000)
+                    date_str = utc_datetime.strftime("%Y-%m-%d")
                     
                     success = db_manager.insert_price_data(
                         currency=currency,
@@ -71,6 +80,7 @@ class DataIngestionManager:
                 
             except Exception as e:
                 logger.error(f"Error fetching price data for {currency}: {str(e)}")
+                logger.warning(f"Skipping data storage for {currency} due to API failure")
                 results[currency] = 0
         
         return results
