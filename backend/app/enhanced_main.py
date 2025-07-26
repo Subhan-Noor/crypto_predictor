@@ -581,32 +581,22 @@ async def get_enhanced_sentiment(
 # --- PATCH: Fix /current_prices to return correct format for frontend ---
 @app.get("/current_prices")
 async def get_enhanced_current_prices():
-    """Enhanced current prices endpoint with caching - NO FALLBACK DATA"""
+    """Enhanced current prices endpoint with caching - fallback to DB if Binance fails"""
     # Check cache first
     if cache_service.is_available():
         cached_data = cache_service.get_current_prices()
         if cached_data:
             return cached_data
-    
-    # Fetch current prices
     try:
+        # Try Binance API first
         btc_price = await binance_service.get_current_price("BTCUSDT")
         eth_price = await binance_service.get_current_price("ETHUSDT")
-        
-        # Binance returns dicts with 'price' as string
         btc_price_val = float(btc_price["price"]) if isinstance(btc_price, dict) and "price" in btc_price else None
         eth_price_val = float(eth_price["price"]) if isinstance(eth_price, dict) and "price" in eth_price else None
-        
-        # Only proceed if we got real prices
         if btc_price_val is None or eth_price_val is None:
-            logger.error("Failed to get real current prices from Binance API")
-            raise HTTPException(status_code=503, detail="Unable to fetch current prices from external API")
-        
-        # Calculate 24h changes from database
+            raise Exception("Binance API failed")
         btc_24h_change = await calculate_24h_change("BTC", btc_price_val)
         eth_24h_change = await calculate_24h_change("ETH", eth_price_val)
-        
-        # Return format that matches frontend CurrentPrice interface
         current_prices = {
             "BTC": {
                 "currency": "BTC",
@@ -614,29 +604,61 @@ async def get_enhanced_current_prices():
                 "change_24h": btc_24h_change["change_24h"],
                 "change_percentage_24h": btc_24h_change["change_percentage_24h"],
                 "volume_24h": btc_24h_change["volume_24h"],
-                "market_cap": None,  # Optional
+                "market_cap": None,
                 "last_updated": datetime.now().isoformat()
             },
             "ETH": {
-                "currency": "ETH", 
+                "currency": "ETH",
                 "price": eth_price_val,
                 "change_24h": eth_24h_change["change_24h"],
                 "change_percentage_24h": eth_24h_change["change_percentage_24h"],
                 "volume_24h": eth_24h_change["volume_24h"],
-                "market_cap": None,  # Optional
+                "market_cap": None,
                 "last_updated": datetime.now().isoformat()
             }
         }
-        
-        # Cache the response
         if cache_service.is_available():
-            cache_service.set_current_prices(current_prices, ttl=60)  # 1 minute TTL
+            cache_service.set_current_prices(current_prices, ttl=60)
         return current_prices
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error fetching current prices: {e}")
-        raise HTTPException(status_code=503, detail="Error fetching current prices from external API")
+        logger.warning(f"Binance API failed, falling back to latest DB price: {e}")
+        # Fallback: use latest DB price
+        try:
+            current_prices = {}
+            for currency in ["BTC", "ETH"]:
+                price_data = await db_manager.get_crypto_prices(currency, limit=2)
+                if price_data and len(price_data) > 0:
+                    latest = price_data[0]
+                    previous = price_data[1] if len(price_data) > 1 else None
+                    current_close = float(latest.get("close", 0))
+                    previous_close = float(previous.get("close", 0)) if previous else current_close
+                    change_24h = current_close - previous_close
+                    change_percentage_24h = (change_24h / previous_close) * 100 if previous_close > 0 else 0.0
+                    current_prices[currency] = {
+                        "currency": currency,
+                        "price": current_close,
+                        "change_24h": round(change_24h, 2),
+                        "change_percentage_24h": round(change_percentage_24h, 2),
+                        "volume_24h": float(latest.get("volume", 0)),
+                        "market_cap": None,
+                        "last_updated": latest.get("date")
+                    }
+                else:
+                    current_prices[currency] = {
+                        "currency": currency,
+                        "price": 0.0,
+                        "change_24h": 0.0,
+                        "change_percentage_24h": 0.0,
+                        "volume_24h": 0.0,
+                        "market_cap": None,
+                        "last_updated": None
+                    }
+            if cache_service.is_available():
+                cache_service.set_current_prices(current_prices, ttl=60)
+            return current_prices
+        except Exception as db_e:
+            logger.error(f"Error fetching current prices from DB: {db_e}")
+            raise HTTPException(status_code=503, detail="Unable to fetch current prices from Binance or database.")
 
 async def calculate_24h_change(currency: str, current_price: float) -> dict:
     """Calculate 24h price change from database"""
