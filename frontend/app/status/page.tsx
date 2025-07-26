@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import Head from 'next/head'
 import { apiService } from '../../utils/api'
 import { APIHealthStatus } from '../../types'
 
@@ -108,6 +109,13 @@ export default function StatusPage() {
 
   return (
     <div className="min-h-screen bg-dark-900 text-white">
+      <Head>
+        <title>System Status - Crypto Prediction API</title>
+        <meta name="description" content="Real-time monitoring of the Crypto Prediction API services." />
+        <meta name="keywords" content="crypto, prediction, api, status, monitoring" />
+        <meta name="author" content="Crypto Prediction API" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      </Head>
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}

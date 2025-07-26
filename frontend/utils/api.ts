@@ -10,17 +10,35 @@ import {
   Currency
 } from '../types'
 
-// API Base Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cryptopredictor-production.up.railway.app'
+// API Base Configuration with HTTPS enforcement
+const getApiBaseUrl = () => {
+  let baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cryptopredictor-production.up.railway.app'
+  
+  // Ensure HTTPS in production
+  if (process.env.NODE_ENV === 'production' && baseUrl.startsWith('http://')) {
+    baseUrl = baseUrl.replace('http://', 'https://')
+    console.warn('⚠️ API URL converted to HTTPS for security:', baseUrl)
+  }
+  
+  return baseUrl
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 console.log('🔗 API Base URL:', API_BASE_URL)
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000, // Increased timeout for better reliability
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest', // CSRF protection
   },
+  // Security configurations
+  withCredentials: false, // Don't send cookies for security
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
 })
 
 // Request interceptor for logging

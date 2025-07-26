@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Head from 'next/head'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 
 export default function AboutPage() {
@@ -94,6 +95,21 @@ export default function AboutPage() {
 
   return (
     <ErrorBoundary>
+      <Head>
+        <title>About - Crypto Prediction</title>
+        <meta name="description" content="Learn about the Crypto Prediction platform, its technology stack, and development timeline." />
+        <meta name="keywords" content="crypto prediction, machine learning, sentiment analysis, price forecasting" />
+        <meta name="author" content="Crypto Prediction Team" />
+        <meta property="og:title" content="About - Crypto Prediction" />
+        <meta property="og:description" content="Learn about the Crypto Prediction platform, its technology stack, and development timeline." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://crypto-prediction.com/about" />
+        <meta property="og:image" content="https://crypto-prediction.com/og-image.jpg" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="About - Crypto Prediction" />
+        <meta name="twitter:description" content="Learn about the Crypto Prediction platform, its technology stack, and development timeline." />
+        <meta name="twitter:image" content="https://crypto-prediction.com/og-image.jpg" />
+      </Head>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-12">

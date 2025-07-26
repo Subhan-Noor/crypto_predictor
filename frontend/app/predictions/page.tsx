@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import Head from 'next/head'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 import { apiService } from '../../utils/api'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -262,6 +263,13 @@ export default function PredictionsPage() {
 
   return (
     <ErrorBoundary>
+      <Head>
+        <title>Real ML Predictions - Historical Accuracy and Model Performance</title>
+        <meta name="description" content="Track the accuracy of your real machine learning predictions across Bitcoin and Ethereum. Analyze model performance and prediction trends." />
+        <meta name="keywords" content="real ml predictions, cryptocurrency predictions, bitcoin predictions, ethereum predictions, machine learning, accuracy, model performance" />
+        <meta name="author" content="Real ML" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      </Head>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">

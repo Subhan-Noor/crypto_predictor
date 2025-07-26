@@ -1,12 +1,20 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import Head from 'next/head'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter } from 'recharts'
 import { apiService } from '../../utils/api'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { PriceLoadingCard } from '../../components/EnhancedLoadingSpinner'
 import { ErrorCard } from '../../components/ErrorCard'
 import { EmptyState } from '../../components/EmptyState'
+
+// SEO Metadata
+export const metadata = {
+  title: 'Analytics | Crypto Prediction Platform',
+  description: 'Advanced cryptocurrency analytics including price correlations, volatility analysis, and market insights for Bitcoin and Ethereum.',
+  keywords: 'crypto analytics, bitcoin analysis, ethereum analysis, price correlation, volatility metrics',
+}
 
 interface AnalyticsData {
   priceCorrelation: number
@@ -316,6 +324,14 @@ export default function AnalyticsPage() {
 
   return (
     <ErrorBoundary>
+      <Head>
+        <title>Analytics | Crypto Prediction Platform</title>
+        <meta name="description" content="Advanced cryptocurrency analytics including price correlations, volatility analysis, and market insights for Bitcoin and Ethereum." />
+        <meta name="keywords" content="crypto analytics, bitcoin analysis, ethereum analysis, price correlation, volatility metrics" />
+        <meta property="og:title" content="Analytics | Crypto Prediction Platform" />
+        <meta property="og:description" content="Advanced cryptocurrency analytics and market insights." />
+        <meta property="og:type" content="website" />
+      </Head>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
