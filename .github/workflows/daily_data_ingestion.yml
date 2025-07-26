@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
-  populate-database:
+  daily-data-ingestion:
     runs-on: ubuntu-latest
     
     steps:
@@ -24,7 +24,7 @@ jobs:
         cd backend
         pip install -r requirements.txt
         
-    - name: Run database population
+    - name: Run daily data ingestion
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -34,9 +34,9 @@ jobs:
         REDIS_ENABLED: true
       run: |
         cd backend
-        python scripts/populate_database.py --current
+        python scripts/daily_automation.py --data-ingestion
         
-    - name: Run daily automation
+    - name: Run health check
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -46,7 +46,7 @@ jobs:
         REDIS_ENABLED: true
       run: |
         cd backend
-        python scripts/daily_automation.py --full
+        python scripts/daily_automation.py --health-check
         
     - name: Notify on failure
       if: failure()
