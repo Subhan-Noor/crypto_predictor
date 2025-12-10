@@ -1,0 +1,91 @@
+name: Weekly Model Retraining
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  retrain-models:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up environment variables
+      run: |
+        echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> $GITHUB_ENV
+        echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_SECRET_KEY=${{ secrets.BINANCE_SECRET_KEY }}" >> $GITHUB_ENV
+        echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> $GITHUB_ENV
+        echo "REDIS_ENABLED=false" >> $GITHUB_ENV
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+        echo "DEBUG=false" >> $GITHUB_ENV
+        
+    - name: Test database connection
+      working-directory: ./backend
+      run: |
+        python -c "
+        import asyncio
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath('.')))
+        from app.database import db_manager
+        
+        async def test():
+            if db_manager.is_connected():
+                print('✅ Database connection successful')
+                return True
+            else:
+                print('❌ Database connection failed')
+                return False
+        
+        success = asyncio.run(test())
+        if not success:
+            exit(1)
+        "
+        
+    - name: Test training functionality
+      working-directory: ./backend
+      run: |
+        python test_training.py
+        
+    - name: Run model retraining
+      working-directory: ./backend
+      run: |
+        echo "🔄 Starting weekly model retraining..."
+        python scripts/clean_train_models.py
+        
+    - name: Clean up old models
+      working-directory: ./backend
+      run: |
+        echo "🧹 Cleaning up old models..."
+        python scripts/cleanup_models.py --execute
+        
+    - name: Commit and push updated models
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add backend/models/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🤖 Weekly auto-retrain models - $(date +'%Y-%m-%d')"
+          git push origin main
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

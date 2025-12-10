@@ -1,0 +1,77 @@
+name: Simple Model Retraining (No Git)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  retrain-models:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up environment variables
+      run: |
+        echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> $GITHUB_ENV
+        echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_SECRET_KEY=${{ secrets.BINANCE_SECRET_KEY }}" >> $GITHUB_ENV
+        echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> $GITHUB_ENV
+        echo "REDIS_ENABLED=false" >> $GITHUB_ENV
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+        echo "DEBUG=false" >> $GITHUB_ENV
+        
+    - name: Test database connection
+      working-directory: ./backend
+      run: |
+        python -c "
+        import sys
+        import os
+        sys.path.append('.')
+        from app.database import db_manager
+        if db_manager.is_connected():
+            print('✅ Database connection successful')
+        else:
+            print('❌ Database connection failed')
+            exit(1)
+        "
+        
+    - name: Run model retraining
+      working-directory: ./backend
+      run: |
+        echo "🔄 Starting model retraining..."
+        python scripts/clean_train_models.py
+        
+    - name: Clean up old models
+      working-directory: ./backend
+      run: |
+        echo "🧹 Cleaning up old models..."
+        python scripts/cleanup_models.py --execute
+        
+    - name: Upload updated models
+      uses: actions/upload-artifact@v4
+      with:
+        name: updated-models
+        path: backend/models/
+        retention-days: 1
+        
+    - name: Show retraining summary
+      run: |
+        echo "✅ Model retraining completed successfully!"
+        echo "📁 Updated models uploaded as artifact"
+        echo "📋 Download the 'updated-models' artifact to get the latest models"

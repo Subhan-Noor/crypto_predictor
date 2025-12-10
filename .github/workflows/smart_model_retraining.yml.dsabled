@@ -1,0 +1,109 @@
+name: Smart Model Retraining
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  monitor-and-retrain:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up environment variables
+      run: |
+        echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> $GITHUB_ENV
+        echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_SECRET_KEY=${{ secrets.BINANCE_SECRET_KEY }}" >> $GITHUB_ENV
+        echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> $GITHUB_ENV
+        echo "REDIS_ENABLED=false" >> $GITHUB_ENV
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+        echo "DEBUG=false" >> $GITHUB_ENV
+        
+    - name: Test database connection
+      working-directory: ./backend
+      run: |
+        python simple_test.py
+        
+    - name: Test monitoring functionality
+      working-directory: ./backend
+      run: |
+        python test_simple_monitor.py
+        
+    - name: Check table structure
+      working-directory: ./backend
+      run: |
+        python check_structure.py
+        
+    - name: Monitor model performance
+      id: monitor
+      working-directory: ./backend
+      run: |
+        python scripts/robust_monitor.py > performance_report.txt 2>&1
+        echo "report=$(cat performance_report.txt)" >> $GITHUB_OUTPUT
+        
+    - name: Check if retraining is needed
+      id: check_retraining
+      run: |
+        if grep -q "RETRAINING RECOMMENDATIONS" performance_report.txt; then
+          echo "needed=true" >> $GITHUB_OUTPUT
+          echo "Models need retraining based on performance"
+        elif grep -q "No prediction data available" performance_report.txt; then
+          echo "needed=true" >> $GITHUB_OUTPUT
+          echo "Models need retraining - no prediction data available"
+        else
+          echo "needed=false" >> $GITHUB_OUTPUT
+          echo "Models performing well - no retraining needed"
+        fi
+        
+    - name: Run model retraining (if needed)
+      if: steps.check_retraining.outputs.needed == 'true'
+      working-directory: ./backend
+      run: |
+        echo "🔄 Retraining models due to performance issues..."
+        python scripts/clean_train_models.py
+        
+    - name: Clean up old models (if retraining was done)
+      if: steps.check_retraining.outputs.needed == 'true'
+      working-directory: ./backend
+      run: |
+        echo "🧹 Cleaning up old models..."
+        python scripts/cleanup_models.py --execute
+        
+    - name: Commit and push updated models (if retraining was done)
+      if: steps.check_retraining.outputs.needed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add backend/models/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🤖 Smart retrain models - $(date +'%Y-%m-%d')"
+          git push origin main
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload performance report
+      uses: actions/upload-artifact@v4
+      with:
+        name: model-performance-report
+        path: backend/performance_report.txt
+        retention-days: 7 

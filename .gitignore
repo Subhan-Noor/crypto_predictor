@@ -1,0 +1,49 @@
+# Python
+backend/venv/
+backend/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+backend/.env
+.env
+
+# Jupyter
+backend/notebooks/.ipynb_checkpoints/
+
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp.env
+
+# Model files (large binary files)
+backend/models/*.pkl
+*.pkl
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Backup files
+*.bak
+*.backup

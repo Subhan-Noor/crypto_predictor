@@ -1,0 +1,50 @@
+name: Simple Model Monitoring
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC (before retraining)
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  check-models:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up environment variables
+      run: |
+        echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> $GITHUB_ENV
+        echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}" >> $GITHUB_ENV
+        echo "BINANCE_SECRET_KEY=${{ secrets.BINANCE_SECRET_KEY }}" >> $GITHUB_ENV
+        echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> $GITHUB_ENV
+        echo "REDIS_ENABLED=false" >> $GITHUB_ENV
+        echo "ENVIRONMENT=production" >> $GITHUB_ENV
+        echo "DEBUG=false" >> $GITHUB_ENV
+        
+    - name: Check model status
+      working-directory: ./backend
+      run: |
+        python scripts/robust_monitor.py > monitoring_report.txt 2>&1
+        echo "Monitoring completed"
+        
+    - name: Upload monitoring report
+      uses: actions/upload-artifact@v4
+      with:
+        name: monitoring-report
+        path: backend/monitoring_report.txt
+        retention-days: 7
